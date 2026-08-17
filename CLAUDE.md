@@ -1,14 +1,28 @@
-# GesAFPED — Frontend
+# SIGA — Frontend (ISS)
 
 Application Next.js 16 (App Router, React 19, TypeScript strict) qui consomme l'API Django/DRF
 du backend `siga` (port 8000). Authentification par cookies httpOnly + refresh JWT.
 
+> **Nommage** : le produit s'appelle **SIGA** (titre affiché dans `app/layout.tsx`, `package.json` =
+> `siga-frontend`). « GesAFPED » est l'ancien nom — il survit **uniquement** dans les clés localStorage
+> `gesafped_user` / `gesafped_modules` / `gesafped_logout`, qui sont **fonctionnelles** :
+> les renommer déconnecte les sessions ouvertes et casse la synchro logout cross-tab. Ne pas y toucher
+> sans migration explicite des 3 clés (`lib/api.ts`, `lib/auth.ts`, `app/dashboard/layout.tsx`).
+
+> **Documentation** : `docs/` a été rangé le 17/08/2026 en `actifs/` (4 docs encore valables) et
+> `archives/<domaine>/` (43 documents périmés), puis **retiré du suivi git** (`docs/` est dans
+> `.gitignore`). Il ne subsiste donc sur le disque local que — un clone frais ne l'aura pas.
+> Voir `docs/README.md` pour l'index. Ce `CLAUDE.md` est le seul document versionné du projet.
+
 ## Stack
 
-- **Framework** : Next.js 16 (Turbopack), App Router
+- **Framework** : Next.js 16 (Turbopack), App Router — dev server sur **port 3001** (`next dev -p 3001`)
 - **Data fetching** : TanStack Query v5 — utilisé partout, plus de `apiFetch` direct
 - **Auth** : cookies httpOnly + refresh JWT toutes les 55 min, inactivity logout 20 min
-- **Backend** : Django + DRF dans `c:/react_projects/GES/siga` (working dir séparé), MySQL `gesafped26`
+- **Backend** : Django 4.2 + DRF dans `c:/SIR/ISS_SIGA/backend_iss` (working dir séparé),
+  **PostgreSQL `iss`** (`DB_ENGINE=postgresql` par défaut). Voir son propre `CLAUDE.md`.
+  ⚠️ `siga_pg` est une ancienne copie de `iss` (même schéma, même volume) — ne pas y écrire.
+- **Env** : `NEXT_PUBLIC_API_URL=http://localhost:8000` + `NEXT_PUBLIC_DEV_BYPASS` (cf. `.env.local.example`)
 - **Lint/types** : `npx tsc --noEmit` est la source de vérité (pas d'eslint strict configuré)
 
 ## Règles non-négociables
@@ -41,8 +55,9 @@ Voir `lib/api/_template-hooks.ts` pour le squelette canonique.
 Sur `Suivie` / `SuiviePointage` / `Emplois` / `EmploisArchive` :
 - ❌ `s.id_prof`, `s.id_em`, `s.id_salle`, `s.id_semestre`, `s.id_departement` (supprimés)
 - ❌ `s.jour`, `s.creneau`, `s.type_seance` (supprimés en CharField)
-- ✅ `s.prof_id`, `s.em_id`, `s.salle_id`, `s.semestre`, `s.departements` (M2M)
+- ✅ `s.prof_id`, `s.em_id`, `s.salle_id`, `s.semestre` (FK vers `parametres.Semestre`)
 - ✅ `s.jour_fk.jour`, `s.creneau_fk.creneau`, `s.type_seance_fk.type_seance`
+- ✅ multi-département : `SuiviePointage.departements` (M2M). `Suivie` garde un `departement` FK **singulier**.
 
 Note : sur `Vacation`, `v.type.type_seance` reste valide (FK vers `Seance`).
 
@@ -107,20 +122,21 @@ lib/
   dans un sprint dédié (URL + Next routes + liens menu).
 - **Types redéclarés** : 39 fichiers ont leur propre `interface Departement/Filiere/Prof...`.
   Préfère importer depuis `@/types/` quand possible (ne pas multiplier).
-- **Backend god-views** : `evaluations/views.py` 2519 lignes, `vacation/views.py` 1048.
+- **Backend god-views** : `suivi/views.py` 2044 lignes, `vacation/views.py` 1987, `avancement/views.py` 1922,
+  `documents/services.py` 1810. (`evaluations` a déjà été découpé en `views_notes/_sessions/_deliberation/...`.)
   Pas refactorer pour le plaisir, mais un nouveau `@action` mérite peut-être son propre module.
 
 ## Workflow
 
 ```bash
-# Lancer le dev server
+# Lancer le dev server → http://localhost:3001
 npm run dev
 
 # Type check (LA validation)
 npx tsc --noEmit
 
-# Backend dans un autre terminal
-cd c:/react_projects/GES/siga && .venv/Scripts/python.exe manage.py runserver
+# Backend dans un autre terminal → http://127.0.0.1:8000
+cd c:/SIR/ISS_SIGA/backend_iss && .venv/Scripts/python.exe manage.py runserver
 ```
 
 Pas de tests automatisés. Validation = `tsc --noEmit` + scénarios manuels listés dans le PR.
@@ -132,11 +148,14 @@ Pour des PRs significatives, préférer un message conventionnel : `feat(domaine
 
 ## Pour les agents IA
 
-- **Working directories multiples** : frontend (root) + `c:/react_projects/GES/siga` (backend Django).
-  Une modif backend nécessite que tu te déplaces ; on peut éditer sans `cd` en utilisant le chemin absolu.
-- **Avant de modifier un endpoint, scanne** : `grep -rE "[a-z]+\.(creneau|type_seance|jour)([\s,\)\.]|$)" siga/apps`
+- **Working directories multiples** : frontend (root) + `c:/SIR/ISS_SIGA/backend_iss` (backend Django,
+  a son propre `CLAUDE.md`). Une modif backend nécessite que tu te déplaces ; on peut éditer sans `cd`
+  en utilisant le chemin absolu.
+- **Avant de modifier un endpoint, scanne** :
+  `grep -rE "[a-z]+\.(creneau|type_seance|jour)([\s,\)\.]|$)" c:/SIR/ISS_SIGA/backend_iss/apps`
   pour rattraper d'éventuels accès aux CharFields supprimés en Phase 5.
 - **Avant de proposer un refacto** : check `npx tsc --noEmit | wc -l` pour l'ancrage.
   Si ça augmente après ton edit, tu as introduit une régression.
 - **MEMORY.md** dans `~/.claude/projects/.../memory/` contient l'historique des décisions
-  (Phase 5, isolation institution, gesafped26 vs gesafped, etc.). Le lire avant un changement structurel.
+  (Phase 5, isolation institution, MySQL `gesafped26` → PostgreSQL `iss`, etc.).
+  Le lire avant un changement structurel.

@@ -38,3 +38,6 @@ Thumbs.db
 
 # Test coverage
 /coverage
+
+# Documentation et archives — rangees hors du depot (voir docs/README.md en local)
+docs/
