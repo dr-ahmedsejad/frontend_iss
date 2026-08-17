@@ -1,0 +1,75 @@
+<svg width="100%" viewBox="0 0 680 630" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>Chaîne complète de la saisie d'une note au PV dans SIGA</title>
+<desc>Trois chemins de saisie écrivent des objets Note ; un signal recalcule automatiquement les résultats de l'étudiant ; le peuplement du PV fige une photo des résultats ; le PDF est généré depuis cette photo.</desc>
+<style>
+.c-gray{fill:#888780;stroke:#5F5E5A}.c-blue{fill:#4F5BD5;stroke:#26215C}.c-amber{fill:#E08A3C;stroke:#993C1D}.c-green{fill:#1D9E75;stroke:#0F6E56}.c-teal{fill:#1D9E75;stroke:#0F6E56}.c-coral{fill:#D85A30;stroke:#993C1D}
+text{font-family:'Segoe UI',Helvetica,Arial,sans-serif}
+</style>
+<defs>
+<marker id="a4" markerWidth="10" markerHeight="10" refX="4" refY="7" orient="auto"><path d="M0,0 L4,7 L8,0 Z" fill="#5F5E5A"/></marker>
+<marker id="g4" markerWidth="10" markerHeight="10" refX="4" refY="7" orient="auto"><path d="M0,0 L4,7 L8,0 Z" fill="#0F6E56"/></marker>
+</defs>
+
+<text x="20" y="28" font-family="Georgia, 'Times New Roman', serif" font-size="17" fill="#26261F">De la saisie au PV — la chaîne et ses deux recalculs</text>
+<text x="20" y="47" font-size="11.5" fill="#5F5E5A">Les résultats sont toujours calculés, jamais saisis. Le PV est une photo, pas une vue en direct.</text>
+
+<g font-size="11.5">
+<rect x="20" y="62" width="200" height="46" rx="6" class="c-blue" fill-opacity="0.16" stroke-width="1"/>
+<text x="120" y="82" text-anchor="middle" font-weight="600" fill="#26215C">Grille de saisie</text>
+<text x="120" y="98" text-anchor="middle" font-size="10.5" fill="#534AB7">POST /notes/saisir-bulk/</text>
+
+<rect x="240" y="62" width="200" height="46" rx="6" class="c-blue" fill-opacity="0.16" stroke-width="1"/>
+<text x="340" y="82" text-anchor="middle" font-weight="600" fill="#26215C">Saisie anonymat</text>
+<text x="340" y="98" text-anchor="middle" font-size="10.5" fill="#534AB7">POST /notes/saisir-anonymat/</text>
+
+<rect x="460" y="62" width="200" height="46" rx="6" class="c-blue" fill-opacity="0.16" stroke-width="1"/>
+<text x="560" y="82" text-anchor="middle" font-weight="600" fill="#26215C">Import Excel</text>
+<text x="560" y="98" text-anchor="middle" font-size="10.5" fill="#534AB7">POST /notes/importer/</text>
+</g>
+<path d="M120,108 L120,124 L320,124" fill="none" stroke="#5F5E5A" stroke-width="1.2"/>
+<path d="M340,108 L340,124" fill="none" stroke="#5F5E5A" stroke-width="1.2"/>
+<path d="M560,108 L560,124 L360,124" fill="none" stroke="#5F5E5A" stroke-width="1.2"/>
+<path d="M340,124 L340,138" fill="none" stroke="#5F5E5A" stroke-width="1.2" marker-end="url(#a4)"/>
+
+<rect x="140" y="142" width="400" height="54" rx="7" class="c-teal" fill-opacity="0.14" stroke-width="1.3"/>
+<text x="340" y="164" text-anchor="middle" font-size="13" font-weight="700" fill="#0F6E56">Note — la seule donnée saisie</text>
+<text x="340" y="182" text-anchor="middle" font-size="10.5" fill="#1D9E75">0–20 · unique (EM × session × type) · upsert · gardes : session ouverte + scope enseignant</text>
+
+<path d="M240,196 L170,196 L170,222" fill="none" stroke="#5F5E5A" stroke-width="1.2" marker-end="url(#a4)"/>
+<path d="M440,196 L510,196 L510,222" fill="none" stroke="#5F5E5A" stroke-width="1.2" marker-end="url(#a4)"/>
+
+<rect x="20" y="226" width="300" height="66" rx="7" class="c-green" fill-opacity="0.16" stroke-width="1.2"/>
+<text x="170" y="246" text-anchor="middle" font-size="12" font-weight="700" fill="#0F6E56">SIGNAL post_save — AUTO</text>
+<text x="170" y="264" text-anchor="middle" font-size="10.5" fill="#1D9E75">recalcule l'étudiant concerné seulement</text>
+<text x="170" y="281" text-anchor="middle" font-size="10.5" fill="#1D9E75">désactivé pendant l'import bulk</text>
+
+<rect x="360" y="226" width="300" height="66" rx="7" class="c-gray" fill-opacity="0.12" stroke-width="1"/>
+<text x="510" y="246" text-anchor="middle" font-size="12" font-weight="700" fill="#444441">ENDPOINTS /calculer* — MANUEL</text>
+<text x="510" y="264" text-anchor="middle" font-size="10.5" fill="#5F5E5A">toute la session, ordre forcé</text>
+<text x="510" y="281" text-anchor="middle" font-size="10.5" fill="#5F5E5A">après import / correction de pondération</text>
+
+<path d="M170,292 L170,316 L320,316" fill="none" stroke="#0F6E56" stroke-width="1.3"/>
+<path d="M510,292 L510,316 L360,316" fill="none" stroke="#0F6E56" stroke-width="1.3"/>
+<path d="M340,316 L340,326" fill="none" stroke="#0F6E56" stroke-width="1.3" marker-end="url(#g4)"/>
+
+<rect x="90" y="330" width="500" height="54" rx="7" class="c-teal" fill-opacity="0.2" stroke-width="1.3"/>
+<text x="340" y="352" text-anchor="middle" font-size="12.5" font-weight="700" fill="#0F6E56">ResultatElement → ResultatModule → ResultatSemestre</text>
+<text x="340" y="370" text-anchor="middle" font-size="10.5" fill="#1D9E75">codes V · VCI · VCS · NV · NVO · E — toujours à jour après chaque saisie</text>
+
+<path d="M340,384 L340,410" fill="none" stroke="#5F5E5A" stroke-width="1.3" marker-end="url(#a4)"/>
+<text x="352" y="402" font-size="10.5" font-style="italic" fill="#993C1D">peupler_lignes() — PHOTO figée</text>
+
+<rect x="140" y="414" width="400" height="52" rx="7" class="c-amber" fill-opacity="0.16" stroke-width="1.2"/>
+<text x="340" y="436" text-anchor="middle" font-size="12.5" font-weight="700" fill="#993C1D">LigneDeliberation (PV)</text>
+<text x="340" y="454" text-anchor="middle" font-size="10.5" fill="#D85A30">copie : moyenne · crédits · code_statut — de LA session du PV</text>
+
+<path d="M340,466 L340,482" fill="none" stroke="#5F5E5A" stroke-width="1.3" marker-end="url(#a4)"/>
+
+<rect x="140" y="486" width="400" height="56" rx="7" class="c-green" fill-opacity="0.18" stroke-width="1.3"/>
+<text x="340" y="508" text-anchor="middle" font-size="12.5" font-weight="700" fill="#0F6E56">PV — PDF / Excel</text>
+<text x="340" y="527" text-anchor="middle" font-size="10.5" fill="#1D9E75">enrichir_lignes_pv : détail SN/SR · max Art. 18 · matrice rattrapage O/F</text>
+
+<rect x="20" y="562" width="640" height="48" rx="7" class="c-coral" fill-opacity="0.14" stroke-width="1.2"/>
+<text x="36" y="582" font-size="11.5" font-weight="700" fill="#993C1D">⚠ Le piège opérationnel</text>
+<text x="36" y="600" font-size="11" fill="#993C1D">Corriger une note met à jour les Resultat* (signal) mais PAS le PV déjà peuplé → re-peupler ou « recalculer tout ».</text>
+</svg>

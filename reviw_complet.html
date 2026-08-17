@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Review complet — GesAFPED + SIGA — 2026-05-16</title>
+<style>
+  @page { size: A4; margin: 18mm 15mm 18mm 15mm; }
+  body { font-family: 'Segoe UI', Calibri, Arial, sans-serif; font-size: 10.5pt; line-height: 1.45; color: #1a1a1a; }
+  h1 { color: #006633; font-size: 22pt; margin: 0 0 4pt 0; border-bottom: 2px solid #006633; padding-bottom: 6pt; }
+  h2 { color: #006633; font-size: 14pt; margin-top: 22pt; border-bottom: 1px solid #ccc; padding-bottom: 3pt; page-break-after: avoid; }
+  h3 { color: #333; font-size: 12pt; margin-top: 14pt; page-break-after: avoid; }
+  h4 { color: #555; font-size: 10.5pt; margin-top: 10pt; margin-bottom: 4pt; }
+  .meta { color: #666; font-size: 9pt; margin-bottom: 18pt; }
+  .crit { background: #fde8e8; border-left: 4px solid #c81e1e; padding: 6pt 10pt; margin: 6pt 0; }
+  .haute { background: #fff4e0; border-left: 4px solid #e67e22; padding: 6pt 10pt; margin: 6pt 0; }
+  .moy { background: #fff9e0; border-left: 4px solid #d4ac0d; padding: 6pt 10pt; margin: 6pt 0; }
+  .faib { background: #e8f5e9; border-left: 4px solid #28a745; padding: 6pt 10pt; margin: 6pt 0; }
+  .badge { display: inline-block; font-size: 8.5pt; font-weight: bold; padding: 1pt 6pt; border-radius: 3pt; color: white; }
+  .b-crit { background: #c81e1e; }
+  .b-haute { background: #e67e22; }
+  .b-moy { background: #d4ac0d; }
+  .b-faib { background: #28a745; }
+  code { font-family: 'Consolas', 'Courier New', monospace; font-size: 9pt; background: #f4f4f4; padding: 1pt 4pt; border-radius: 2pt; color: #c7254e; }
+  pre { background: #f6f8fa; border: 1px solid #ddd; padding: 8pt; font-family: 'Consolas', monospace; font-size: 9pt; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; margin: 8pt 0; font-size: 9.5pt; }
+  th { background: #006633; color: white; text-align: left; padding: 5pt 8pt; }
+  td { border-bottom: 1px solid #eee; padding: 5pt 8pt; vertical-align: top; }
+  tr:nth-child(even) td { background: #fafafa; }
+  ul { margin: 4pt 0 8pt 0; padding-left: 20pt; }
+  li { margin-bottom: 3pt; }
+  .summary-box { background: #f0f7f4; border: 1px solid #006633; padding: 12pt; margin: 10pt 0 18pt 0; }
+  .section-cover { page-break-before: always; }
+  .toc { background: #fafafa; padding: 10pt 18pt; border: 1px solid #e0e0e0; }
+  .toc ul { list-style: none; padding-left: 0; }
+  .toc li { margin: 3pt 0; }
+  .verdict { font-style: italic; color: #444; border-left: 3px solid #006633; padding: 4pt 12pt; margin: 8pt 0; background: #f7faf8; }
+  .small { font-size: 9pt; color: #666; }
+  .footer-note { margin-top: 20pt; padding-top: 8pt; border-top: 1px solid #ddd; font-size: 9pt; color: #777; }
+</style>
+</head>
+<body>
+
+<h1>Review complet — GesAFPED + SIGA</h1>
+<div class="meta">
+  Date : <strong>2026-05-16</strong> &nbsp;|&nbsp;
+  Réalisé par : 5 agents Claude en parallèle (read-only) &nbsp;|&nbsp;
+  Périmètre : backend Django/DRF <code>siga</code> + frontend Next.js 16 <code>gesafped_frontend</code><br>
+  Type d'analyse : audit statique du code, aucune modification, aucune exécution destructive.
+</div>
+
+<div class="summary-box">
+  <h3 style="margin-top: 0;">Synthèse exécutive</h3>
+  <p><strong>État global :</strong> Le projet est <strong>plus maintenable que la moyenne d'un projet mono-dev</strong> grâce au CLAUDE.md, aux conventions TanStack Query strictes côté frontend et à un découpage Django par apps cohérent. Cependant, <strong>3 fuites de secrets dans git</strong> exigent une action immédiate, et <strong>plusieurs god-views backend ont continué à grossir</strong> depuis la documentation officielle.</p>
+  <p><strong>Top 3 actions urgentes :</strong></p>
+  <ol>
+    <li>Purger <code>deploy/dump.sql</code> de l'historique git + rotation des mots de passe admin/IT/DE/scolarité.</li>
+    <li>Branchement effectif de <code>captureError</code> (monitoring quasi-mort actuellement) pour gagner en visibilité prod.</li>
+    <li>Refactor du N+1 sur <code>_compute_charge_permanents</code> (jusqu'à 900 requêtes par appel) + ajout des index manquants.</li>
+  </ol>
+  <p><strong>Score onboarding :</strong> 6.5 / 10 — passe à 8.5 / 10 avec 2-3 jours de polish (README racine, .env.example frontend, CI frontend).</p>
+</div>
+
+<div class="toc">
+  <strong>Sommaire</strong>
+  <ul>
+    <li>1. Sécurité (OWASP, secrets, RBAC, auth)</li>
+    <li>2. Architecture (couplage, code mort, anti-patterns)</li>
+    <li>3. Qualité de code (tests, complexité, lisibilité)</li>
+    <li>4. Performance (N+1, index, bundle, re-renders)</li>
+    <li>5. Maintenabilité (onboarding, doc, bus factor)</li>
+    <li>6. Plan d'action priorisé</li>
+    <li>7. Limites & vérifications honnêtes</li>
+  </ul>
+</div>
+
+<!-- ============================================================ -->
+<h2 class="section-cover">1. Sécurité</h2>
+
+<h3>1.1 Findings critiques <span class="badge b-crit">CRITIQUE</span></h3>
+
+<div class="crit">
+  <h4>1.1.1 Dump SQL avec hashes pbkdf2 de tous les utilisateurs committé dans git</h4>
+  <p><strong>Fichier :</strong> <code>siga/deploy/dump.sql</code> (3063 lignes, commit <code>de8868b</code> du 08-05-2026)</p>
+  <p>Le dump contient les hashes <code>pbkdf2_sha256</code> de <strong>tous les utilisateurs</strong> (admin <code>sejad</code>, IT, étudiants, enseignants) avec username, email, role, NNI étudiants. Ces hashes sont crackables hors-ligne. De plus, plusieurs comptes étudiants/enseignants ont pour mot de passe leur NNI/nbac (cf. finding 1.2.1) — bypass possible si l'attaquant connaît un NNI public.</p>
+  <p><strong>Action :</strong> <code>git filter-repo --path deploy/dump.sql --invert-paths</code>, rotation immédiate des mots de passe admin/IT/DE/scolarité, ajout au <code>.gitignore</code>.</p>
+</div>
+
+<div class="crit">
+  <h4>1.1.2 Secrets de production sur disque dans deploy/.env</h4>
+  <p><strong>Fichier :</strong> <code>siga/deploy/.env</code></p>
+  <p>Le fichier contient <code>SECRET_KEY=a1IchqNNngwYTB9xZXzZBy16tnGOxJNFYU-...</code> et <code>DB_PASSWORD=siga_local_dev_2026</code>. Bien que <code>deploy/.gitignore</code> exclut <code>.env</code>, il faut vérifier qu'aucun commit historique ne le contient et qu'il n'est pas embarqué dans une image Docker poussée.</p>
+  <p><strong>Action :</strong> <code>git log --all --diff-filter=A --name-only | grep deploy/.env</code> ; si trouvé → purge + régénération de <code>SECRET_KEY</code> et <code>DB_PASSWORD</code>.</p>
+</div>
+
+<div class="crit">
+  <h4>1.1.3 .env racine du backend committé</h4>
+  <p><strong>Fichier :</strong> <code>siga/.env</code> (commit initial <code>a9c44041</code>)</p>
+  <p>Contient <code>SECRET_KEY=change-me-in-production</code>, <code>DEBUG=True</code>, <code>DB_PASSWORD=</code> (vide). Pas de secret réel exposé aujourd'hui, mais c'est le mauvais pattern : tout commit ultérieur qui injecte un vrai secret le rendra public. <strong>Aucun <code>.gitignore</code> racine n'existe</strong>.</p>
+  <p><strong>Action :</strong> <code>git rm --cached .env</code> + créer <code>.gitignore</code> racine.</p>
+</div>
+
+<h3>1.2 Findings hauts <span class="badge b-haute">HAUTE</span></h3>
+
+<div class="haute">
+  <h4>1.2.1 Mots de passe initiaux devinables (NNI/nbac)</h4>
+  <p><strong>Fichiers :</strong> <code>siga/apps/inscriptions/views.py:120</code> ; <code>apps/absence/views.py:431</code> ; <code>apps/prof/services.py:149</code> ; <code>apps/authentication/management/commands/create_student_accounts.py:93</code></p>
+  <p>Étudiants → <code>password=nbac</code> (numéro de bac, public). Enseignants → <code>password=NNI</code> (carte d'identité). Le flag <code>doit_changer_mdp=True</code> est posé, mais tout compte non encore consommé est compromissible avec une information publique.</p>
+  <p><strong>Recommandation :</strong> Générer un token aléatoire <code>secrets.token_urlsafe(12)</code> envoyé hors-bande (SMS/email/papier).</p>
+</div>
+
+<div class="haute">
+  <h4>1.2.2 RBAC permissive par défaut sur les ViewSets sans required_module</h4>
+  <p><strong>Fichier :</strong> <code>siga/core/permissions.py:41-47</code></p>
+  <p><code>RBACPermission</code> ne s'applique que si <code>required_module</code> est défini sur la vue : <code>if not module_code: return True</code>. Tout ViewSet héritant uniquement de <code>IsAuthenticated</code> (default DRF) sans <code>required_module</code> est accessible à <strong>n'importe quel utilisateur authentifié</strong>.</p>
+  <p><strong>Recommandation :</strong> Auditer chaque ViewSet pour exiger soit <code>required_module</code>, soit une permission_classes explicite. Ajouter un test smoke par module.</p>
+</div>
+
+<div class="haute">
+  <h4>1.2.3 38 sérialiseurs utilisent fields = '__all__' (risque mass-assignment)</h4>
+  <p>Exemple critique : <code>siga/apps/authentication/serializers.py:184</code> — <code>ModuleActionSerializer</code>. Permet une édition non contrôlée via API (création/écriture de champs sensibles comme <code>created_by</code>, <code>is_active</code>, <code>validee_par</code>).</p>
+  <p><strong>Recommandation :</strong> Remplacer <code>fields = '__all__'</code> par whitelist explicite + <code>read_only_fields</code>, au minimum sur les serializers RBAC (<code>Module</code>, <code>Action</code>, <code>ModuleAction</code>, <code>RoleDefault</code>, <code>UserPermission</code>).</p>
+</div>
+
+<div class="haute">
+  <h4>1.2.4 CSRF absent sur les endpoints DRF cookie-auth</h4>
+  <p><strong>Fichier :</strong> <code>siga/core/authentication.py:11-30</code> + <code>siga/settings/base.py:60-73</code></p>
+  <p><code>CookieJWTAuthentication</code> identifie via cookie httpOnly, mais DRF bypasse <code>CSRFViewMiddleware</code> quand l'auth n'est pas <code>SessionAuthentication</code>. Le frontend envoie déjà <code>X-CSRFToken</code> mais le backend ne le vérifie pas. Vecteur CSRF en POST cross-origin (cookie <code>SameSite=Lax</code> ne protège pas tous les cas).</p>
+  <p><strong>Recommandation :</strong> Ajouter une vérification CSRF custom dans <code>CookieJWTAuthentication.authenticate</code>, ou passer <code>SameSite=Strict</code> en prod.</p>
+</div>
+
+<div class="haute">
+  <h4>1.2.5 Régression CLAUDE.md règle non-négociable n°1 : 13 pages dashboard utilisent encore apiFetch direct</h4>
+  <p>Devait être <strong>0</strong> selon CLAUDE.md. Pages concernées : <code>payement/{liste,ajouter,modifier/[id]}</code>, <code>emplois/gerer</code>, <code>enseignant/{reclamations,suivi}</code>, <code>inscriptions/derogations/ajouter</code>, <code>parametres/semaines/ajouter</code>, <code>profs/{ajouter,[id]}</code>, <code>comptes/ajouter</code>, <code>em/ajouter</code>, <code>suivi/{rattrapage,remplissage}</code>.</p>
+</div>
+
+<h3>1.3 Findings moyens <span class="badge b-moy">MOYENNE</span></h3>
+
+<div class="moy">
+  <p><strong>1.3.1</strong> Endpoint public <code>/preinscriptions/suivi/?numero_dossier=&lt;uuid&gt;</code> (<code>inscriptions/views.py:163</code>) : <code>AllowAny</code> + throttle 20/min anonyme = 28 800/jour pour énumération distribuée. UUID = espace énorme donc risque acceptable, mais resserrer à 5/min.</p>
+</div>
+
+<div class="moy">
+  <p><strong>1.3.2</strong> <code>/institutions/active/</code> public (<code>apps/parametres/views.py:294</code>) : <code>InstitutionSerializer</code> avec <code>fields='__all__'</code>. Vérifier qu'aucun champ interne (paths absolus, tokens) n'est exposé. Créer un <code>InstitutionPublicSerializer</code> restreint.</p>
+</div>
+
+<div class="moy">
+  <p><strong>1.3.3</strong> <code>DEBUG=True</code> en <code>development.py</code> avec <code>ALLOWED_HOSTS=['*']</code> + <code>.env</code> racine committé avec <code>DEBUG=True</code> : risque info-leak si bascule prod oubliée.</p>
+</div>
+
+<h3>1.4 Findings faibles <span class="badge b-faib">FAIBLE</span></h3>
+
+<div class="faib">
+  <ul>
+    <li><strong>Swagger <code>/api/docs/</code> exposé sans auth</strong> (<code>siga/urls.py:17</code>) : restreindre via <code>SERVE_PERMISSIONS = ['rest_framework.permissions.IsAdminUser']</code>.</li>
+    <li><strong>Frontend stocke AuthUser en localStorage</strong> (<code>lib/auth.ts:75</code>) : pas de tokens (cookies httpOnly OK), mais identité/rôle exfiltrables via XSS.</li>
+    <li><strong><code>FileDropzone.tsx</code> n'utilise pas <code>validateUpload</code> central</strong> : risque de divergence entre les deux implémentations.</li>
+    <li><strong>Pas de protection ReDoS sur <code>lookup_value_regex</code></strong> (<code>inscriptions/views.py:144</code>) : regex <code>[0-9a-f-]+</code> non bornée. Resserrer à un UUID strict.</li>
+  </ul>
+</div>
+
+<div class="verdict">
+  <strong>Bonnes pratiques observées :</strong> JWT en cookies httpOnly, axes brute-force, throttling DRF, <code>safeNextUrl</code> / <code>safeImageSrc</code> / <code>validateUpload</code> en place côté frontend, pas de <code>dangerouslySetInnerHTML</code>, pas de tokens en localStorage, pas de <code>cursor.execute</code> avec f-string dans le code applicatif, pas de <code>pickle.load</code> / <code>yaml.load</code>, <code>password_hashers</code> Django par défaut.
+</div>
+
+<!-- ============================================================ -->
+<h2 class="section-cover">2. Architecture</h2>
+
+<h3>2.1 Top fichiers volumineux</h3>
+
+<h4>Frontend</h4>
+<table>
+  <thead><tr><th>Fichier</th><th>Lignes</th><th>Note</th></tr></thead>
+  <tbody>
+    <tr><td><code>app/dashboard/absences/stats/page.tsx</code></td><td>875</td><td>Combo data fetch + filtres + mutation seuil + charts</td></tr>
+    <tr><td><code>app/dashboard/evaluations/deliberations/[id]/page.tsx</code></td><td>816</td><td>Zone sensible (calculs notes)</td></tr>
+    <tr><td><code>app/dashboard/inscriptions/nouvelle/page.tsx</code></td><td>762</td><td></td></tr>
+    <tr><td><code>app/dashboard/emplois/gerer/page.tsx</code></td><td>727</td><td>apiFetch direct restant</td></tr>
+    <tr><td><code>app/dashboard/absences/justificatifs/page.tsx</code></td><td>662</td><td></td></tr>
+    <tr><td><code>components/scolarite/EtudiantDossier.tsx</code></td><td>621</td><td></td></tr>
+    <tr><td><code>app/dashboard/absences/saisir/page.tsx</code></td><td>588</td><td></td></tr>
+    <tr><td><code>app/dashboard/parametres/institutions/page.tsx</code></td><td>557</td><td></td></tr>
+    <tr><td><code>app/dashboard/payement/liste/page.tsx</code></td><td>554</td><td>typo URL + apiFetch direct</td></tr>
+    <tr><td><code>app/dashboard/absences/rapport/page.tsx</code></td><td>550</td><td></td></tr>
+  </tbody>
+</table>
+
+<h4>Backend — métriques actualisées vs CLAUDE.md</h4>
+<table>
+  <thead><tr><th>Fichier</th><th>Lignes (audit)</th><th>Lignes CLAUDE.md</th><th>Évolution</th></tr></thead>
+  <tbody>
+    <tr><td><code>apps/evaluations/views.py</code></td><td><strong>2592</strong></td><td>2519</td><td>+73</td></tr>
+    <tr><td><code>apps/vacation/views.py</code></td><td><strong>1840</strong></td><td>1048</td><td><strong>+792 (a doublé)</strong></td></tr>
+    <tr><td><code>apps/avancement/views.py</code></td><td>1330</td><td>—</td><td>nouveau dans top 5</td></tr>
+    <tr><td><code>apps/suivi/views.py</code></td><td>1322</td><td>—</td><td></td></tr>
+    <tr><td><code>apps/absence/views.py</code></td><td>1147</td><td>—</td><td></td></tr>
+    <tr><td><code>apps/documents/services.py</code></td><td>1119</td><td>—</td><td></td></tr>
+    <tr><td><code>apps/portail/views.py</code></td><td>996</td><td>—</td><td></td></tr>
+  </tbody>
+</table>
+
+<h3>2.2 Code mort / dette</h3>
+
+<ul>
+  <li><strong>13 pages dashboard avec apiFetch direct</strong> (régression CLAUDE.md règle #1, déjà listées en section 1.2.5).</li>
+  <li><strong>41 routes orphelines</strong> non liées depuis <code>lib/nav-config.ts</code>. Sous-routes <code>[id]</code>/<code>ajouter</code> légitimes, mais <code>dashboard/statistiques</code>, <code>dashboard/scolarite/documents</code>, <code>dashboard/parametres/{departements,salles}</code> sont suspectes.</li>
+  <li><strong><code>components/charts/index.tsx</code></strong> : barrel jamais importé — les pages utilisent l'import direct via Next.</li>
+  <li><strong>Typo <code>payement</code> confirmée et étendue</strong> : 9 fichiers concernés (au-delà des 6 documentés dans CLAUDE.md).</li>
+</ul>
+
+<h3>2.3 Anti-patterns récurrents</h3>
+
+<ul>
+  <li><strong>58 pages utilisent <code>useQuery</code> inline</strong> sans passer par un <code>*-hooks.ts</code> factory, alors que 26 factories existent dans <code>lib/api/</code>.</li>
+  <li><strong>20+ pages avec <code>useMutation</code> sans <code>invalidateQueries</code></strong> dans <code>onSuccess</code> → UI stale après écriture (bug utilisateur direct). Liste partielle : <code>absences/{etudiant,fiches,rapport,stats}</code>, <code>avancement/*</code>, <code>documents/{generer,registre}</code>, <code>enseignant/{premier-acces,vacations}</code>, <code>evaluations/{emargement,ponderation}</code>, <code>payement/{details,etat}</code>.</li>
+  <li><strong>10+ listes paginées sans <code>placeholderData: keepPreviousData</code></strong> : toutes les <code>absences/*</code> et <code>avancement/*</code>.</li>
+  <li><strong>30+ pages mixent <code>useState</code> + <code>useEffect</code> + fetch</strong> au lieu d'utiliser TanStack Query pour le server state.</li>
+  <li><strong>40+ fichiers redéclarent leurs propres interfaces</strong> (<code>Departement</code>, <code>Filiere</code>, <code>Prof</code>, <code>Semestre</code>, <code>Salle</code>, <code>Etudiant</code>, <code>Vacation</code>). Aucun n'importe depuis <code>@/types/</code>.</li>
+  <li><strong><code>absences/stats/page.tsx</code> = combo des 4 anti-patterns</strong> : apiFetch direct + useQuery inline + 4 interfaces locales + 875 lignes.</li>
+  <li><strong>Couplage backend bidirectionnel <code>evaluations</code> ↔ <code>inscriptions</code></strong> : chacun importe l'autre via <code>apps.X</code>.</li>
+  <li><strong><code>apps/avancement/views.py</code> importe 7 apps</strong> (<code>departement, em, emplois, parametres, prof, suivi, vacation</code>) — couche agrégat candidate à un module <code>services/</code>.</li>
+  <li><strong><code>evaluations/views.py</code></strong> : 29 <code>@action</code> + 5 surcharges <code>get_queryset</code> dans 2592 lignes.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 class="section-cover">3. Qualité de code</h2>
+
+<h3>3.1 Tableau récapitulatif</h3>
+<table>
+  <thead><tr><th>Métrique</th><th>Backend (siga)</th><th>Frontend (gesafped)</th></tr></thead>
+  <tbody>
+    <tr><td>Tests</td><td>6 fichiers <code>tests/test_*.py</code></td><td><strong>0 test</strong></td></tr>
+    <tr><td>Config tests</td><td><code>pytest.ini</code> + <code>conftest.py</code> + factory_boy</td><td>Aucune (pas de jest/vitest/playwright)</td></tr>
+    <tr><td>TODO/FIXME/HACK/XXX</td><td>0 dans <code>apps/</code></td><td>0 dans <code>src</code></td></tr>
+    <tr><td>any / @ts-ignore</td><td>n/a</td><td>9 <code>any</code> (4 fichiers, surtout <code>useRef&lt;any&gt;</code> chart.js) — 0 ts-ignore</td></tr>
+    <tr><td>Fonctions &gt; 100 lignes</td><td>~50+ (top : 1445 / 937 / 811 l)</td><td>196 fonctions &gt;100 l (top : 825 / 687 / 687)</td></tr>
+    <tr><td>Composants &gt; 400 lignes</td><td>n/a</td><td><strong>27 composants</strong></td></tr>
+    <tr><td><code>print()</code> en prod</td><td>0 hors migrations</td><td>n/a</td></tr>
+    <tr><td><code>console.log</code> oubliés</td><td>n/a</td><td>0 (8 <code>console.warn</code> tous délibérés)</td></tr>
+    <tr><td><code>except Exception:</code> nu</td><td><strong>65</strong> (22 fichiers)</td><td>n/a</td></tr>
+    <tr><td><code>#006633</code> hardcodé</td><td>n/a</td><td><strong>931</strong> dans 190 fichiers (vs 877 documentés)</td></tr>
+    <tr><td>Linters configurés</td><td><strong>Aucun</strong> (pas de black/ruff/pre-commit)</td><td>ESLint flat config — pas de prettier ni husky</td></tr>
+    <tr><td><code>tsc --noEmit</code></td><td>n/a</td><td><strong>0 erreur</strong> (baseline préservée)</td></tr>
+    <tr><td><code>captureError</code> usage</td><td>n/a</td><td>7 occurrences dans <strong>2 fichiers</strong> seulement</td></tr>
+  </tbody>
+</table>
+
+<h3>3.2 Issues critiques</h3>
+
+<ol>
+  <li><strong>0 test frontend sur 131 pages dashboard</strong>. Aucune protection sur RBAC (<code>lib/auth-roles.ts</code>, <code>lib/nav-filter.ts</code>), refresh JWT (<code>useTokenRefresh</code>), purge cache au logout (point critique CLAUDE.md), validation file, anti-XSS, anti open-redirect.</li>
+  <li><strong>6 tests backend sur les modules les plus critiques</strong> (calculs notes, délibérations, RBAC, vacation) — bon ciblage mais étroit. Pas de test sur <code>suivi</code>, <code>absence</code>, <code>portail</code>, <code>inscriptions</code>, <code>documents</code>, ni sur la Phase 5.</li>
+  <li><strong>65 <code>except Exception:</code> nus</strong>, concentrations : <code>portail/views.py</code> (12), <code>documents/services.py</code> (6), <code>authentication/views.py</code> (6), <code>vacation/views.py</code> (6), <code>suivi/views.py</code> (5). Catch-all masquent les erreurs DB/validation/IO en 200/500 muet.</li>
+  <li><strong>Endpoints DRF retournant 200 sur condition d'erreur sémantique</strong> : <code>absence/views.py:833</code> renvoie 200 avec <code>{'message': 'Aucun justificatif à supprimer.'}</code> (devrait être 404).</li>
+  <li><strong><code>captureError</code> quasi-mort</strong> : utilisé seulement dans <code>error.tsx</code> et <code>monitor.ts</code>. Les <code>catch (err)</code> dans les pages meurent silencieusement.</li>
+  <li><strong>931 <code>#006633</code> dans 190 fichiers</strong> (+54 vs CLAUDE.md). Pas de tokens, pas de variable CSS, pas de <code>:root</code> thématique. Tout rebrand demande un sed global.</li>
+  <li><strong>Aucun formatter backend</strong> : pas de <code>black</code>, <code>ruff</code>, <code>flake8</code>, <code>isort</code>, <code>pre-commit</code>, <code>setup.cfg</code>, <code>pyproject.toml</code>.</li>
+</ol>
+
+<h3>3.3 Top fichiers à complexité élevée (backend)</h3>
+<ul>
+  <li><code>vacation/views.py:396</code> — bloc <code>_check_vacation_module</code> de 1445 lignes (faux positif partiel : englobe le reste du fichier).</li>
+  <li><code>absence/views.py:212</code> — 937 lignes</li>
+  <li><code>inscriptions/views.py:89</code> — <code>_creer_compte_etudiant</code> 811 lignes</li>
+  <li><code>evaluations/views.py:1368</code> — action <code>excel</code> de 500 lignes (à scinder)</li>
+  <li><code>evaluations/services/calcul_notes.py:33</code> — <code>_calculer_me_em</code> 577 lignes</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 class="section-cover">4. Performance</h2>
+
+<h3>4.1 Risques N+1 (top 5)</h3>
+
+<div class="haute">
+  <h4>4.1.1 <code>_compute_charge_permanents</code> — IMPACT ÉLEVÉ</h4>
+  <p><code>apps/avancement/views.py:380-490</code>. Boucle <code>for prof in profs:</code> sur 150-300 enseignants avec, à chaque tour, 3 sous-requêtes (<code>SuiviePointage.objects.filter(prof_id=...)</code>, <code>Vacation.objects.filter(prof_id=...)</code>, <code>ChargeInstitution.objects.filter(prof=...)</code>). Jusqu'à <strong>900 requêtes par appel</strong>. Solution : 3 aggregate groupés <code>values('prof_id').annotate(...)</code>. Gain estimé : ÷ 30-50× la latence de l'endpoint.</p>
+</div>
+
+<div class="haute">
+  <h4>4.1.2 <code>PresenceViewSet.bulk_update</code> — IMPACT ÉLEVÉ sur ressenti utilisateur</h4>
+  <p><code>apps/absence/views.py:562-582</code>. <code>update_or_create</code> dans <code>for item in d['presences']:</code> → 2 requêtes par étudiant. Une classe de 30 étudiants = 60 requêtes. Solution : <code>bulk_update</code> après préchargement, ou <code>INSERT ... ON DUPLICATE KEY UPDATE</code> MySQL natif.</p>
+</div>
+
+<div class="moy">
+  <p><strong>4.1.3</strong> <code>suivi/views.py:1024</code> : <code>{sp.pk: sp for sp in SuiviePointage.objects.filter(pk__in=ids)}</code> sans <code>select_related</code> → N+1 sur itération downstream.</p>
+</div>
+
+<div class="moy">
+  <p><strong>4.1.4</strong> <code>inscriptions/views.py:826</code> : action <code>elements</code> sans <code>prefetch_related('notes')</code>. Le <code>_notes_map</code> downstream peut repasser en N+1.</p>
+</div>
+
+<div class="moy">
+  <p><strong>4.1.5</strong> 20 <code>for ... in Model.objects.all()</code> dans <code>evaluations/views.py</code> — à réviser cas par cas.</p>
+</div>
+
+<h3>4.2 Index manquants suspectés</h3>
+<table>
+  <thead><tr><th>Table</th><th>Index manquants</th><th>Impact</th></tr></thead>
+  <tbody>
+    <tr><td><code>vacation_vacation</code></td><td>Aucun <code>Meta.indexes</code>. Manque <code>(annee_univ, prof)</code> et <code>date</code></td><td>ÉLEVÉ — table volumineuse</td></tr>
+    <tr><td><code>suivi_suivie</code></td><td>Seul <code>annee_universitaire</code> indexé. Manque composites avec <code>prof_id</code> et <code>em_id</code></td><td>ÉLEVÉ</td></tr>
+    <tr><td><code>suivi_suivie_pointage</code></td><td>Aucun <code>Meta.indexes</code></td><td>ÉLEVÉ (cible du N+1 #1)</td></tr>
+    <tr><td><code>vacation_surveillance</code></td><td>Pas d'index sur <code>(prof_id, annee_univ)</code> ni <code>date</code></td><td>MOYEN</td></tr>
+  </tbody>
+</table>
+
+<h3>4.3 Frontend — usage TanStack Query &amp; bundle</h3>
+<ul>
+  <li><strong>48% des <code>useQuery</code> sans <code>enabled:</code></strong> (91/176) — fetch précoce avant hydratation de <code>user.annee_universitaire</code>, puis re-fetch immédiat. Impact MOYEN.</li>
+  <li><strong>Bundle sain</strong> : pas de doublons date libs, charts lazy-loadés correctement (<code>components/charts/index.tsx</code>), <code>lucide-react</code> tree-shakable, <code>staleTime: 30s</code>, <code>refetchOnWindowFocus: false</code>, <code>gcTime: 5min</code> dans <code>lib/query-client.ts</code>.</li>
+  <li><strong>11 <code>&lt;img&gt;</code> natifs</strong> au lieu de <code>next/image</code> (photos étudiants notamment).</li>
+  <li><strong><code>useTimeout</code> peu utilisé</strong> (3 fichiers seulement) — la plupart des <code>setInterval</code> sont manuels. Risque latent.</li>
+</ul>
+
+<h3>4.4 Backend — caching</h3>
+<ul>
+  <li>Pagination DRF activée globalement (<code>PAGE_SIZE=10</code>). RAS.</li>
+  <li><code>cache.</code> utilisé seulement dans 3 fichiers. Endpoints référentiels (filières, années, départements, jours, créneaux) servis sans cache HTTP/Redis. Gain facile via <code>@method_decorator(cache_page(60))</code>.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 class="section-cover">5. Maintenabilité</h2>
+
+<h3>5.1 Score onboarding : 6.5 / 10</h3>
+<p>Un dev junior peut faire tourner les 2 stacks en quelques heures grâce aux Dockerfiles et au <code>.env.example</code> backend, mais doit deviner plusieurs choses critiques : frontend sans <code>.env.example</code>, ni README, ni script <code>typecheck</code> dans <code>package.json</code> malgré la règle d'or CLAUDE.md.</p>
+
+<h3>5.2 Documentation</h3>
+<h4>Présent &amp; utile</h4>
+<ul>
+  <li><code>CLAUDE.md</code> frontend — excellent, à jour, conventions claires.</li>
+  <li><code>docs/TANSTACK_QUERY_GUIDE.md</code>, <code>docs/AUDIT.md</code>.</li>
+  <li><code>deploy/README.md</code> côté backend (vrai mode d'emploi prod).</li>
+  <li><code>siga/.env.example</code> documenté ligne-à-ligne.</li>
+  <li><code>drf-spectacular</code> expose <code>/api/docs/</code> et <code>/api/redoc/</code>.</li>
+</ul>
+<h4>Manquant</h4>
+<ul>
+  <li><strong>Aucun <code>README.md</code> à la racine</strong> ni frontend ni backend.</li>
+  <li><strong>Aucun <code>.env.example</code> frontend</strong>.</li>
+  <li>Pas de <code>CONTRIBUTING.md</code>, pas de <code>ARCHITECTURE.md</code> central, pas de schéma BD documenté hors migrations.</li>
+</ul>
+<h4>Bruit / dette doc</h4>
+<ul>
+  <li>Racine polluée par 5+ docs ad-hoc (<code>PLAN_FRONTEND_SCOLARITE.md</code>, <code>REMEDIATION_AUTH.md</code>, <code>collecte_anon.md</code>, <code>ipgei.md</code>, <code>portail_ens.md</code>, <code>releve.md</code>, <code>SUIVI_MODULE_CONTEXT.md</code> dupliqué dans <code>docs/</code>).</li>
+  <li>Côté siga, <code>_diag_*.py</code>, <code>_fix_*.py</code>, <code>tmp_calcul.py</code>, fichiers de backfill JSON traînent à la racine repo.</li>
+</ul>
+
+<h3>5.3 Outillage dev</h3>
+<h4>Bien</h4>
+<ul>
+  <li>Dockerfiles multi-stage front + back, <code>docker-compose.yml</code>, <code>deploy.sh</code>.</li>
+  <li>Settings Django éclatés (<code>base/dev/prod/test/docker</code>).</li>
+  <li>pytest avec markers + coverage gating en CI, <code>pytest --no-migrations</code>, drf-spectacular.</li>
+</ul>
+<h4>À combler</h4>
+<ul>
+  <li><strong><code>package.json</code> n'expose pas de script <code>typecheck</code></strong> alors que <code>npx tsc --noEmit</code> est la "source de vérité" CLAUDE.md.</li>
+  <li><strong>Aucun pre-commit hook</strong> (ni husky côté front, ni <code>.pre-commit-config.yaml</code> côté back).</li>
+  <li><strong>Pas de CI frontend</strong> : seul <code>siga/.github/workflows/test.yml</code> existe.</li>
+  <li>Aucun <code>.vscode/</code> ni <code>.idea/</code> partagés.</li>
+  <li>Pas de <code>Makefile</code> côté siga.</li>
+</ul>
+
+<h3>5.4 Conventions de commit</h3>
+<p>Le CLAUDE.md mentionne le format <code>&lt;jj-mm-aaaa&gt;.&lt;n&gt;</code> (ex. <code>02-05-2026.3</code>). Sur les 100 derniers commits backend, <strong>seuls 28/100 respectent ce format</strong>. Le reste est libre (<code>fix bugs</code>, <code>eval++</code>, <code>vacs</code>, <code>before test</code>, <code>deploy siga</code>).</p>
+
+<h3>5.5 Bus factor estimé</h3>
+<ul>
+  <li><strong>Frontend : 1.5</strong> — pattern TanStack ultra-cohérent, mais 931 <code>#006633</code> hardcodés, 40+ types redéclarés, typo <code>payement</code> jamais corrigée → une seule personne a la carte mentale complète.</li>
+  <li><strong>Backend : 2</strong> — settings/CI/test bien posés, mais 4 god-views totalisant 7000 lignes ne sont vraiment compris que par leur auteur. Migration Phase 5 et schéma <code>gesafped26</code> vs <code>gesafped</code> documentés uniquement dans la mémoire de l'agent.</li>
+  <li><strong>Déploiement : 1</strong> — <code>deploy/README.md</code> est bon mais sub-filter Nginx + placeholder <code>__SIGA_API_HOST__</code> = une seule personne sait débugger si ça casse.</li>
+</ul>
+
+<h3>5.6 Refactorabilité — zones dangereuses (où il est risqué de toucher)</h3>
+<ul>
+  <li><strong>God-views</strong> : <code>evaluations/views.py</code> 2592 l, <code>vacation/views.py</code> 1840 l, <code>avancement/views.py</code> 1330 l, <code>suivi/views.py</code> 1322 l.</li>
+  <li><strong>God-pages frontend</strong> : <code>absences/stats/page.tsx</code> 875 l, <code>evaluations/deliberations/[id]/page.tsx</code> 816 l.</li>
+  <li><strong>Couverture inégale</strong> : 6 fichiers tests pour ~705 fonctions backend. <code>vacation/views.py</code>, <code>suivi/views.py</code>, <code>documents/services.py</code> sont des boîtes noires.</li>
+  <li><strong>Signaux Django magiques</strong> dans <code>evaluations/signals.py</code> et <code>prof/signals.py</code> → non documentés dans CLAUDE.md.</li>
+  <li><strong>Phase 5 (FK only)</strong> : pas de test garde-fou, toute régression CharField restée invisible.</li>
+  <li><strong>Ratio docstring backend ≈ 39%</strong> (277/705 <code>def</code>). Acceptable mais fonctions critiques (calcul notes, délibération) parlent peu.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 class="section-cover">6. Plan d'action priorisé</h2>
+
+<table>
+  <thead><tr><th>#</th><th>Action</th><th>Effort</th><th>Impact</th><th>Quand</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>Purger <code>dump.sql</code>, <code>deploy/.env</code>, <code>.env</code> de l'historique git (filter-repo) + rotation des secrets exposés</td><td>0.5j</td><td>CRITIQUE</td><td>Aujourd'hui</td></tr>
+    <tr><td>2</td><td>Reset des mots de passe NNI/nbac actifs + génération token aléatoire pour comptes futurs</td><td>1j</td><td>HAUTE</td><td>Semaine 1</td></tr>
+    <tr><td>3</td><td>Audit RBAC : recenser tous les ViewSets sans <code>required_module</code>, ajouter perm explicite</td><td>1-2j</td><td>HAUTE</td><td>Semaine 1</td></tr>
+    <tr><td>4</td><td>Brancher Sentry (ou endpoint) + remonter <code>captureError</code> sur tous les <code>catch</code> non-triviaux</td><td>1j</td><td>HAUTE</td><td>Semaine 1</td></tr>
+    <tr><td>5</td><td>Migrer les 13 <code>apiFetch</code> directs restants vers les factory hooks existants</td><td>1-2j</td><td>MOYENNE</td><td>Semaine 2</td></tr>
+    <tr><td>6</td><td>Fix des 20+ <code>useMutation</code> sans <code>invalidateQueries</code></td><td>1j</td><td>MOYENNE</td><td>Semaine 2</td></tr>
+    <tr><td>7</td><td>Refactor N+1 <code>_compute_charge_permanents</code> + 4 migrations d'index (vacation, suivi, surveillance)</td><td>2j</td><td>HAUTE perf</td><td>Sprint courant</td></tr>
+    <tr><td>8</td><td>Vectoriser <code>PresenceViewSet.bulk_update</code></td><td>0.5j</td><td>MOYENNE perf</td><td>Sprint courant</td></tr>
+    <tr><td>9</td><td>Tests Vitest sur 6 modules sécu critiques (auth, RBAC, safe-redirect, safe-image, file-validation, force-logout)</td><td>1-2j</td><td>HAUTE</td><td>Sprint courant</td></tr>
+    <tr><td>10</td><td>Découper <code>evaluations/views.py</code> (2592 l) et <code>vacation/views.py</code> (1840 l) en sous-modules par <code>@action</code> group</td><td>3-5j</td><td>MOYENNE archi</td><td>Sprint dédié</td></tr>
+    <tr><td>11</td><td>Consolider <code>@/types/</code> + règle ESLint anti-redéclaration, migration des 40+ fichiers</td><td>2j</td><td>MOYENNE</td><td>Sprint dédié</td></tr>
+    <tr><td>12</td><td>Ajouter README racine + <code>.env.example</code> frontend + script <code>typecheck</code> + workflow CI frontend</td><td>0.5j</td><td>HAUTE onboarding</td><td>Semaine 2</td></tr>
+    <tr><td>13</td><td>Pre-commit hooks : <code>.pre-commit-config.yaml</code> backend (black/isort/ruff) + husky+lint-staged frontend</td><td>0.5j</td><td>MOYENNE</td><td>Semaine 2</td></tr>
+    <tr><td>14</td><td>Renommer <code>payement</code> → <code>paiement</code> (9 fichiers + nav-config + redirects Next)</td><td>1j</td><td>FAIBLE</td><td>Sprint dédié</td></tr>
+    <tr><td>15</td><td>Centraliser <code>#006633</code> en token CSS (préparation rebrand)</td><td>0.5j</td><td>FAIBLE</td><td>Backlog</td></tr>
+    <tr><td>16</td><td>Restreindre Swagger <code>/api/docs/</code> aux admins en prod</td><td>0.2j</td><td>FAIBLE</td><td>Backlog</td></tr>
+    <tr><td>17</td><td>Refactor 27 god-pages frontend &gt;400 lignes</td><td>5j+</td><td>MOYENNE</td><td>Backlog supervisé</td></tr>
+  </tbody>
+</table>
+
+<!-- ============================================================ -->
+<h2 class="section-cover">7. Limites &amp; vérifications honnêtes</h2>
+
+<ul>
+  <li>Audit réalisé par <strong>lecture statique uniquement</strong>. Aucun runtime profiling, aucune exécution de tests, aucune migration appliquée.</li>
+  <li>Les findings "N+1" et "index manquants" sont des <strong>suspicions fortes</strong> basées sur le code — à confirmer avec <code>EXPLAIN</code> MySQL ou <code>django-silk</code> en environnement de staging.</li>
+  <li>Les CVE potentielles (Pillow 10.4.0, Django 4.2.16) ne sont pas vérifiées — lancer <code>pip-audit</code> avant priorisation.</li>
+  <li>Les 3 findings CRITIQUE git nécessitent une vérification rapide :
+    <pre>git log --all --full-history -- deploy/dump.sql deploy/.env .env</pre>
+    pour confirmer l'ampleur exacte de la fuite.</li>
+  <li>Audit produit par 5 agents Claude indépendants (sécurité, architecture, qualité, performance, maintenabilité) en parallèle. Le rapport consolide leurs sorties, déduplique et croise les constats.</li>
+</ul>
+
+<div class="footer-note">
+  <strong>Méthodologie :</strong> Chaque agent a accès en lecture seule aux deux working directories (<code>c:\react_projects\GES\siga</code> et <code>c:\react_projects\GES\gesafped_frontend</code>). Aucun fichier source n'a été modifié, aucune commande mutante n'a été exécutée. Les findings sont reproductibles via <code>grep</code> / <code>find</code> à partir des chemins listés.<br>
+  <em>Généré le 2026-05-16 par Claude Code (Opus 4.7).</em>
+</div>
+
+</body>
+</html>

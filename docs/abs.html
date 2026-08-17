@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Plan - Refonte Absences</title>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; margin: 40px; color: #333; }
+    h1 { font-size: 28px; margin-top: 30px; border-bottom: 3px solid #006633; padding-bottom: 10px; }
+    h2 { font-size: 22px; margin-top: 25px; color: #006633; }
+    h3 { font-size: 18px; margin-top: 15px; color: #555; }
+    code { background: #f5f5f5; padding: 2px 6px; border-radius: 3px; font-family: monospace; }
+    table { border-collapse: collapse; width: 100%; margin: 15px 0; }
+    td, th { border: 1px solid #ddd; padding: 10px; text-align: left; }
+    th { background: #f8fafc; }
+    pre { background: #f5f5f5; padding: 10px; overflow-x: auto; border-radius: 5px; }
+    blockquote { border-left: 4px solid #006633; padding-left: 15px; margin-left: 0; color: #666; }
+    hr { border: none; border-top: 2px solid #e0e0e0; margin: 30px 0; }
+    @media print { body { margin: 20px; } page-break-inside: avoid; }
+  </style>
+</head>
+<body>
+<h1>Plan — Refonte & perfectionnement du module Absences</h1></p><p>> Destination finale : ce plan sera copié dans <code>docs/abs.md</code> après sortie du mode Plan.</p><p>> Décisions utilisateur :
+> - Refonte <strong>complète</strong> (chantiers A → E + bonus workflow).
+> - Mode salle <strong>binaire pur</strong> : liste verticale d'étudiants ; par défaut <strong>Présent</strong>, un tap bascule en <strong>Absent</strong> (2ᵉ tap re-bascule). Uniquement 2 statuts. Les statuts Sanctionné / Justifié sont traités après coup par le DA via le mode bureau. Pas de scan QR ni d'offline queue dans cette itération.
+> - Workflow validation des justificatifs (DA / responsable filière) inclus dans le périmètre.</p><p>---</p><p><h2>1. Contexte</h2></p><p>Le module <code>/dashboard/absences/*</code> couvre 8 écrans (hub, saisir, importer, etudiant, rapport, stats, fiches, portail) et le backend Django expose 3 modèles (<code>Etudiant</code>, <code>Presence</code>, <code>SeuilAbsence</code>) + 5 endpoints clés (<code>bulk</code>, <code>upload-justificatif</code>, <code>rapport</code>, <code>par-etudiant</code>, <code>importer</code>). Trois problèmes bloquants ont été identifiés :</p><p>1. <strong>Pièces justificatives non uploadées</strong> dans <code>saisir/</code> — le fichier choisi est gardé en mémoire locale, le nom est seulement concaténé dans le <code>commentaire</code>. Le endpoint <code>/api/v1/absences/presences/upload-justificatif/</code> n'est <strong>jamais</strong> appelé depuis la saisie.
+2. <strong>Rapports partiellement fonctionnels</strong> — les filtres <code>dateDebut</code> / <code>dateFin</code> et le mode "période" sur <code>rapport/</code> ne sont pas transmis au backend ; les stats globales de <code>stats/</code> n'exposent aucun filtre département ; le donut genre affiche des zéros.
+3. <strong>Expérience mobile pauvre</strong> — la matrice de <code>saisir/</code> utilise <code>overflow-x-auto</code> sans densification adaptée. Avec des agents pédagogiques qui pointeront sur tablette/mobile en salle pendant les séances planifiées, l'écran actuel est inutilisable (colonnes < 80 px, actions cachées au hover).</p><p>En plus de ces 3 chantiers, des inconsistances transverses doivent être corrigées : absence de contrôles de rôle sur 7 des 8 pages, aucune modale justificatif unifiée, <code>alert()</code> / modale slate sur le portail, pas de pagination sur <code>etudiant/</code> et <code>fiches/</code>, save bulk non atomique (1 POST par séance → N requêtes série).</p><p><strong>Objectif</strong> : transformer le module en outil terrain, sécurisé par rôle, avec vrais justificatifs, rapports filtrables et UI mobile-first pour la saisie en séance.</p><p>---</p><p><h2>2. État des lieux (résumé)</h2></p><p><h3>Backend <code>/api/v1/absences/</code></h3>
+- <code>EtudiantViewSet</code> : CRUD + <code>importer()</code> (Excel).
+- <code>PresenceViewSet</code> : CRUD + <code>bulk()</code>, <code>upload-justificatif()</code>, <code>rapport()</code>, <code>par-etudiant()</code>.
+- <code>SeuilAbsenceView</code> : singleton (pk=1), RBAC admin/DA.
+- Statut presence : <code>0=Present, 1=Absent, 2=Sanctionne, 3=Justifiee</code>.
+- <code>justificatif</code> = <code>FileField upload_to='justificatifs/'</code>.</p><p><h3>Frontend existant (problèmes)</h3>
+<tr><td></td></tr>
+<tr><td></td></tr>
+<tr><td></td></tr>
+<tr><td></td></tr>
+<tr><td></td></tr>
+<tr><td></td></tr>
+<tr><td></td></tr>
+<tr><td></td></tr>
+<tr><td></td></tr>
+<tr><td></td></tr></p><p><h3>Primitives réutilisables (déjà dans le repo)</h3>
+- <code>lib/api.ts</code> : <code>apiFetch</code>, <code>apiUpload</code> (progress), <code>apiFetchPaginated</code>, <code>apiFetchBlob</code>.
+- <code>lib/auth.ts</code> : <code>canAccess('absences','modifier'<tr><td></td></tr>'supprimer')</code>, <code>getStoredUser</code>, rôles (<code>admin</code>, <code>DA</code>, <code>enseignant</code>, <code>responsable_filiere</code>, <code>etudiant</code>…).
+- <code>components/ui/</code> : <code>DataTable</code>, <code>Badge</code>, <code>StatusPill</code>, <code>FileDropzone</code>, <code>ConfirmModal</code>, <code>Pagination</code>, <code>EmptyState</code>, <code>LoadingSkeleton</code>, <code>Drawer</code>, <code>FormField</code>.
+- <code>components/ui/Toast.tsx</code> → <code>useToast()</code> (remplace <code>lib/flash.ts</code> legacy).
+- <code>chart.js</code> + <code>react-chartjs-2</code> + <code>chartjs-plugin-datalabels</code>.
+- <code>lib/downloadBlob.ts</code>, <code>xlsx</code> (déjà dépendance).</p><p>---</p><p><h2>3. Stratégie proposée (6 chantiers)</h2></p><p><h3>Chantier A — Couche API + types absences (fondation)</h3>
+Centraliser tous les appels dans un nouveau <code>lib/api/absences.ts</code> (même pattern que <code>lib/api/scolarite.ts</code>), et poser les types dans <code>types/absences.ts</code>.</p><p>Nouveau module :
+- <code>etudiants.list(params)</code>, <code>.get(id)</code>, <code>.import(file, onProgress)</code>.
+- <code>presences.list(params)</code>, <code>.bulk(payload)</code>, <code>.uploadJustificatif(presenceId, file, onProgress)</code>, <code>.rapport(params)</code>, <code>.parEtudiant(etudiantId, params)</code>.
+- <code>seuil.get()</code>, <code>seuil.update(value)</code>.
+- Types : <code>Etudiant</code>, <code>Presence</code>, <code>StatutPresence</code> (enum), <code>RapportRow</code>, <code>SeuilAbsence</code>.</p><p>Pattern cache TTL (voir <code>lib/cache.ts</code>) pour : liste départements, semaines générées, étudiants d'un département (TTL 5 min).</p><p><h3>Chantier B — Composants partagés absences</h3>
+Créer 5 composants dans <code>components/absences/</code> :</p><p>1. <strong><code>StatutBadge.tsx</code></strong> — encapsule le mapping statut → couleur/label (remplace 8 implémentations manuelles).
+2. <strong><code>JustificatifUploader.tsx</code></strong> — wrapper autour de <code>FileDropzone</code> + <code>apiUpload</code> vers <code>/presences/:id/upload-justificatif/</code>, barre de progression, preview + téléchargement du justificatif existant. Utilisé par <code>saisir/</code>, <code>portail/</code>, <code>etudiant/</code>.
+3. <strong><code>AbsenceStatutPicker.tsx</code></strong> — sélecteur cyclique P→A→S→J avec tap-targets ≥ 44 px (mobile-friendly, gestes tactiles).
+4. <strong><code>EtudiantAutocomplete.tsx</code></strong> — recherche debouncée (300 ms) avec restriction par rôle (un enseignant ne voit que les étudiants de ses séances, un étudiant ne se voit que lui-même).
+5. <strong><code>PeriodeFilter.tsx</code></strong> — filtre unifié (presets 7/30/60/90j + custom + par mois/semestre), réutilisé par <code>rapport/</code>, <code>stats/</code>, <code>etudiant/</code>.</p><p><h3>Chantier C — Refonte <code>saisir/</code> en 2 modes</h3></p><p><strong>Règle de rôle transverse</strong> : les actions autorisées dépendent du rôle.
+- <code>enseignant</code> / agent terrain → <strong>Présent / Absent</strong> uniquement (statuts 0 et 1) + upload justificatif.
+- <code>DA</code> / <code>responsable_filiere</code> / <code>admin</code> → tous les statuts modifiables, requalification Sanctionné/Justifié depuis l'écran d'arbitrage (chantier F).</p><p>L'écran devient adaptatif <strong>selon la taille de viewport + rôle</strong> :</p><p><strong>Mode Bureau (≥ <code>lg</code>)</strong> : matrice actuelle améliorée.
+- Toujours-visibles : boutons commentaire + justificatif (plus cachés au hover → tactile-compatible).
+- Cycle de statut (clic cellule) :
+  - Rôles agent/enseignant → cycle <strong>Présent ↔ Absent</strong> uniquement.
+  - Rôles DA/resp.filière/admin → cycle complet <strong>P → A → S → J → P</strong>.
+- Autosave debounced 3 s (ou bouton manuel conservé).
+- Bulk save optimisé : <strong>1 seul POST</strong> groupé par requête (<code>Promise.all</code> avec <code>Promise.allSettled</code> pour tolérer les erreurs partielles).
+- Colonne "total" sticky à droite.
+- Barre de progression globale (X/Y séances sauvegardées).</p><p><strong>Mode Salle (< <code>md</code> OU URL <code>?mode=salle</code>)</strong> : interface simple pensée pour un agent qui pointe debout en salle, téléphone en main.
+1. <strong>Écran 1 — Sélection séance</strong> : liste des séances du jour (pré-filtrée sur jour courant) ; tap sur une ligne → écran 2. Pré-sélection intelligente si l'heure courante tombe dans un créneau.
+2. <strong>Écran 2 — Pointage 1-tap binaire</strong> :
+   - Header collant : nom du prof / matière / créneau / salle.
+   - Compteur en temps réel en haut : <strong>X Présents / Y Absents</strong>.
+   - <strong>Liste verticale des étudiants</strong> (matricule + nom, card ≥ 64 px, pleine largeur).
+   - <strong>État par défaut : tous Présents</strong> (card fond vert clair + icône ✓).
+   - <strong>Un tap sur la card</strong> → bascule en <strong>Absent</strong> (fond rouge + icône ✗). Un 2ᵉ tap → retour <strong>Présent</strong>. Un seul bouton = toute la card est tappable. Pas de menu, pas de sheet.
+   - <strong>Icône 📎</strong> apparaît à droite de la card dès qu'elle est en "Absent", pour joindre un justificatif photo/PDF via <code><input type="file" accept="image/*,application/pdf" capture="environment"></code> (caméra native sur mobile).
+   - Recherche par matricule en haut (utile pour liste > 30 étudiants).
+3. <strong>Écran 3 — Validation</strong> : récap "X présents / Y absents" + bouton plein écran "Valider la séance" → POST <code>presences.bulk</code> (statuts 0=Présent, 1=Absent) + upload des justificatifs attachés en séquentiel → toast succès → retour écran 1.</p><p><strong>Pourquoi binaire</strong> : les statuts "Sanctionné" et "Justifié" sont des qualifications post-hoc qui dépendent d'un arbitrage administratif (commentaire étudiant, document fourni, décision DA). Les exposer à l'agent en salle créerait du bruit et des saisies incohérentes. Ces statuts restent modifiables via le mode bureau et le chantier F (validation justificatifs).</p><p>Les deux modes (bureau et salle) partagent le même hook <code>useSaisieAbsences</code> pour la cohérence des données et de la logique métier.</p><p><h3>Chantier D — Rapports, stats & exports fonctionnels</h3>
+<code>rapport/page.tsx</code> :
+- Transmettre <code>date_debut</code>, <code>date_fin</code>, <code>mois</code>, <code>departement</code>, <code>niveau</code>, <code>filiere</code> au backend (vérifier que <code>PresenceViewSet.rapport()</code> accepte ces params — si non, liste des queryparams à ajouter côté backend dans la section "Dépendances backend").
+- Ajouter export Excel via <code>xlsx</code> (déjà installé) et export PDF via print CSS dédié.
+- Remplacer KPI actuels par cartes <code>StatutBadge</code>-colorées + mini-sparkline par étudiant (évolution sur période).</p><p><code>stats/page.tsx</code> :
+- Filtre département ajouté.
+- Supprimer le donut genre (données non exploitées) → remplacer par <strong>pyramide d'absentéisme par jour de la semaine</strong> (utile pour détecter jours à risque).
+- Seuil dans une carte dédiée avec <code>ConfirmModal</code> avant PATCH.
+- Liste rouge : limiter à top 20, lien "voir tous" → page dédiée paginée.
+- Ajout d'une courbe temporelle (absences/jour sur la période sélectionnée).</p><p><code>etudiant/page.tsx</code> :
+- Filtre dates transmis en queryparam (<code>date_debut</code>, <code>date_fin</code>).
+- Pagination sur l'historique (<code>apiFetchPaginated</code>).
+- Protection RBAC : un <code>etudiant</code> ne peut chercher que lui-même (redirection auto vers <code>portail/absences</code>).</p><p><h3>Chantier E — Portail étudiant + réclamations</h3>
+- Unifier la modale réclamation sur <code>ConfirmModal</code> + <code>FileDropzone</code> + <code>JustificatifUploader</code> (cohérence design system).
+- Afficher badge + historique des réclamations (accepted / en_examen / refusée) sur chaque ligne.
+- Toast <code>useToast()</code> après soumission (pas juste fermeture silencieuse).
+- Ajouter un compteur "X absences au-dessus du seuil → contacter votre DA" en tête de page si applicable.</p><p><h3>Chantier F — Arbitrage justificatifs & sanctions (DA / responsable_filiere)</h3></p><p><strong>Séparation des rôles validée</strong> :
+- <strong>Agent en salle</strong> → peut uniquement marquer <strong>Présent / Absent</strong> (chantier C mode salle).
+- <strong>Prof / enseignant</strong> → mode bureau (4 statuts visibles mais seuls Présent/Absent modifiables).
+- <strong>DA / responsable_filiere / admin</strong> → <strong>seuls habilités</strong> à requalifier une absence en <strong>Sanctionné (2)</strong> ou <strong>Justifiée (3)</strong> via le nouvel écran dédié.</p><p>Nouvel écran <code>/dashboard/absences/justificatifs/</code> accessible aux rôles <code>DA</code>, <code>responsable_filiere</code>, <code>admin</code> :
+- <strong>Onglet 1 — Justificatifs en attente</strong> : toutes les <code>Presence</code> avec <code>justificatif</code> uploadé et <code>statut = 1</code> (Absent).
+  - Colonnes : matricule, nom, date séance, matière, aperçu justificatif (preview PDF/image via <code>JustificatifPreview</code>), commentaire étudiant, actions.
+  - Actions : <strong>Valider</strong> (→ <code>statut = 3</code> Justifiée) / <strong>Refuser</strong> (→ reste <code>statut = 1</code>, ajoute commentaire de refus).
+- <strong>Onglet 2 — Sanctions</strong> : le DA peut requalifier une absence en <code>statut = 2</code> (Sanctionné) depuis la liste filtrée des absents.
+  - Action : <strong>Sanctionner</strong> (→ <code>statut = 2</code>, commentaire obligatoire justifiant la sanction).
+- <strong>Filtres</strong> : département, période, type de statut.
+- <strong>Pagination</strong> + tri par date.
+- <strong>Compteur global</strong> "X justificatifs en attente" affiché comme badge sur l'entrée de menu + sur le hub <code>/dashboard/absences</code>.
+- <strong>Journal d'audit</strong> : chaque changement de statut loggue <code>user_id</code>, <code>ancien_statut</code>, <code>nouveau_statut</code>, <code>commentaire</code>, <code>date</code> (champ déjà présent via <code>date_modification</code> ; ajouter un log séparé si besoin d'historique complet → ticket backend si applicable).</p><p><strong>Nécessite côté backend</strong> :
+- Endpoint <code>POST /api/v1/absences/presences/:id/changer-statut/</code> prenant <code>{statut, commentaire}</code> et vérifiant le rôle (<code>DA <tr><td></td></tr> admin</code>).
+- Ou extension de l'endpoint existant <code>bulk()</code> pour accepter un changement de statut en masse avec garde RBAC.
+- Cf. § 5 pour coordination backend.</p><p>---</p><p><h2>4. Fichiers à modifier / créer</h2></p><p><h3>À créer</h3>
+- <code>lib/api/absences.ts</code> — couche API.
+- <code>types/absences.ts</code> — types TS.
+- <code>components/absences/StatutBadge.tsx</code> — mapping des 4 statuts backend (P/A/S/J).
+- <code>components/absences/JustificatifUploader.tsx</code> — upload réel vers <code>/upload-justificatif/</code>.
+- <code>components/absences/AbsenceStatutPicker.tsx</code> — pour mode bureau : cycle conditionnel par rôle (binaire pour agent, 4 statuts pour DA).
+- <code>components/absences/PresentAbsentToggle.tsx</code> — pour mode salle : bouton binaire 1-tap (Présent ↔ Absent).
+- <code>components/absences/EtudiantAutocomplete.tsx</code>
+- <code>components/absences/PeriodeFilter.tsx</code>
+- <code>components/absences/JustificatifPreview.tsx</code> — aperçu inline PDF/image pour l'écran d'arbitrage (chantier F).
+- <code>hooks/useSaisieAbsences.ts</code> — logique partagée saisir bureau/salle, gère les permissions par rôle.
+- <code>app/dashboard/absences/saisir/salle/page.tsx</code> — mode salle : liste des séances du jour.
+- <code>app/dashboard/absences/saisir/salle/[suiviId]/page.tsx</code> — pointage binaire d'une séance.
+- <code>app/dashboard/absences/justificatifs/page.tsx</code> — arbitrage DA (justifications + sanctions).</p><p><h3>À modifier</h3>
+- <code>app/dashboard/absences/page.tsx</code> — corriger liste rouge, ajouter lien "mode salle".
+- <code>app/dashboard/absences/saisir/page.tsx</code> — refonte mode bureau + câblage vraie upload justificatif.
+- <code>app/dashboard/absences/importer/page.tsx</code> — template downloadable, validation client.
+- <code>app/dashboard/absences/etudiant/page.tsx</code> — RBAC, pagination, filtre dates serveur.
+- <code>app/dashboard/absences/rapport/page.tsx</code> — filtres fonctionnels, exports Excel/PDF.
+- <code>app/dashboard/absences/stats/page.tsx</code> — filtres, refonte donut, courbe temporelle.
+- <code>app/dashboard/absences/fiches/page.tsx</code> — garde-fou volume + pagination fiches.
+- <code>app/dashboard/portail/absences/page.tsx</code> — cohérence design system, historique réclamations.</p><p><h3>Primitives réutilisées (sans modification)</h3>
+- <code>lib/api.ts</code>, <code>lib/auth.ts</code>, <code>lib/downloadBlob.ts</code>, <code>lib/cache.ts</code>.
+- <code>components/ui/*</code> (DataTable, FileDropzone, ConfirmModal, Pagination, Toast, EmptyState, LoadingSkeleton, Drawer, FormField, StatusPill, Badge).</p><p>---</p><p><h2>5. Dépendances backend à clarifier</h2></p><p>Vérifier côté <code>apps/absence/views.py</code> et <code>serializers.py</code> :
+- <code>PresenceViewSet.rapport()</code> accepte-t-il <code>date_debut</code>, <code>date_fin</code>, <code>mois</code>, <code>niveau</code>, <code>filiere</code> ?
+- <code>PresenceViewSet.par-etudiant()</code> accepte-t-il <code>date_debut</code>, <code>date_fin</code> + pagination ?
+- Endpoint <code>upload-justificatif()</code> retourne-t-il l'URL du fichier pour preview immédiat ?
+- (Bonus) Endpoint de validation justificatif existe-t-il ou faut-il le créer ?</p><p><strong>Action préalable</strong> : lire <code>apps/absence/views.py</code> (worktree <code>C:\react_projects\GES\siga\apps\...</code>) avant d'implémenter chantier D. Si filtres manquants → ticket séparé côté backend.</p><p>---</p><p><h2>6. Ordre d'exécution recommandé</h2></p><p>Refonte complète en un seul passage :</p><p>1. <strong>Chantier A</strong> (2 j) — couche API + types, sans impact UI, débloque tout.
+2. <strong>Chantier B</strong> (2 j) — composants partagés, testables isolément.
+3. <strong>Chantier C mode Bureau</strong> (2 j) — correction immédiate du bug justificatifs + cycle conditionnel par rôle.
+4. <strong>Chantier C mode Salle</strong> (2 j) — pointage binaire mobile pour agents terrain.
+5. <strong>Chantier D</strong> (3 j) — rapports/stats fonctionnels, après clarification backend.
+6. <strong>Chantier E</strong> (1 j) — cohérence portail étudiant.
+7. <strong>Chantier F</strong> (2 j) — arbitrage DA (justifications + sanctions).</p><p><strong>Total estimé</strong> : 14 jours.</p><p>---</p><p><h2>7. Vérification (test end-to-end)</h2></p><p>1. <strong>Bug justificatifs</strong> : lancer <code>npm run dev</code>, se connecter en enseignant, saisir absences, joindre un PDF → vérifier dans Django admin que <code>Presence.justificatif</code> est bien rempli avec le fichier (pas juste mention en commentaire).
+2. <strong>Mode salle</strong> : ouvrir l'URL <code>/dashboard/absences/saisir/salle</code> sur mobile (DevTools responsive + vrai téléphone), sélectionner une séance, tapoter la card d'un étudiant pour le passer en Absent, vérifier le compteur en temps réel, joindre une photo via la caméra, valider → POST bulk + upload justificatifs séquentiel.
+3. <strong>Rapport filtré</strong> : générer rapport pour un département + période 30j, comparer avec comptage manuel d'une semaine, exporter Excel → ouvrir dans LibreOffice, vérifier les totaux.
+4. <strong>Stats</strong> : vérifier filtre département, pyramide jours, courbe temporelle.
+5. <strong>Portail étudiant</strong> : se connecter en étudiant, soumettre réclamation avec PDF, vérifier toast + apparition dans liste.
+6. <strong>RBAC</strong> : tester que rôle <code>enseignant</code> ne peut pas modifier le seuil, que rôle <code>etudiant</code> ne peut pas chercher un autre étudiant.
+7. <strong>Responsive</strong> : chaque écran testé à 360 / 768 / 1024 px (Chrome DevTools device toolbar).
+8. <strong>Checklist design system</strong> (§ 11 de <code>docs/skill_design.md</code>) : palette, typo Cairo, libellés FR, feedback via <code>useToast</code>, <code>npm run lint</code> OK.</p><p>---</p><p><h2>8. Risques & mitigations</h2></p><p><tr><td></td></tr>
+<tr><td></td></tr>
+<tr><td></td></tr>
+<tr><td></td></tr>
+<tr><td></td></tr>
+<tr><td></td></tr>
+<tr><td></td></tr>
+
+</body>
+</html>

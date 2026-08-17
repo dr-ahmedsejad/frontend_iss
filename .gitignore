@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+.pnp/
+.pnp.js
+.pnp.*
+
+# Next.js cache
+.next/
+out/
+build/
+.turbo/
+
+# TypeScript build cache
+tsconfig.tsbuildinfo
+next-env.d.ts
+
+# Tools / IDEs
+.claude/
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Env / secrets
+.env
+.env*.local
+
+# Logs / OS
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+Thumbs.db
+
+# Test coverage
+/coverage
