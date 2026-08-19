@@ -34,6 +34,9 @@ export const documentsApi = {
     annee_universitaire: string;
     filiere: number;
     semestre?: number;
+    /** Restreint à une promotion. Requis de fait quand la filière porte
+     *  plusieurs niveaux la même année, sinon le PDF les mélange. */
+    niveau?: number;
   }): Promise<{ blob: Blob; generated: number; total: number }> => {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (typeof document !== 'undefined') {

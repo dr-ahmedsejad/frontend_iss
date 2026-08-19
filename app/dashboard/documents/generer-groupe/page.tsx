@@ -34,6 +34,7 @@ export default function GenererGroupePage() {
   const [typeDoc,  setTypeDoc]  = useState<TypeDocument | ''>('');
   const [annee,    setAnnee]    = useState(getStoredUser()?.annee_universitaire ?? '');
   const [filiere,  setFiliere]  = useState<number | null>(null);
+  const [niveau,   setNiveau]   = useState('');
   const [semestre, setSemestre] = useState('');
 
   const { data: yearsData } = useQuery({
@@ -58,23 +59,47 @@ export default function GenererGroupePage() {
   const typeMeta      = TYPES.find(t => t.value === typeDoc) ?? null;
   const needsSemestre = !!typeMeta?.needsSemestre;
 
-  // Semestre dépendant des NIVEAUX de la filière : L{n} → S{2n-1} (impair), S{2n}
-  // (pair). Ex. SEA (L2-L3) → S3,S4,S5,S6 ; LPSTAT (L1) → S1,S2. Le semestre étant
-  // déterminant pour le relevé, on n'expose que les semestres réellement couverts.
   const selectedFiliere = filieres.find(f => f.id === filiere) ?? null;
+
+  // Le registre des diplômes ne porte pas de niveau (diplôme = fin de cycle) :
+  // le backend ignore le filtre pour ce type, on ne le propose donc pas.
+  const ignoreNiveau = typeDoc === 'attestation_diplome';
+
+  // Niveaux réellement couverts par la filière (ex. LPSEA L2-L3 → [2, 3]).
+  const niveauxFiltres = useMemo(() => {
+    if (!selectedFiliere) return [];
+    const out: number[] = [];
+    for (let n = selectedFiliere.niveau_debut; n <= selectedFiliere.niveau_fin; n++) out.push(n);
+    return out;
+  }, [selectedFiliere]);
+
+  // Semestre dépendant des NIVEAUX : L{n} → S{2n-1} (impair), S{2n} (pair).
+  // Ex. SEA (L2-L3) → S3,S4,S5,S6 ; LPSTAT (L1) → S1,S2. Si un niveau est choisi,
+  // on restreint aux deux semestres de CE niveau — sinon on proposerait un semestre
+  // incohérent avec la promotion ciblée.
   const semestresFiltres = useMemo(() => {
     if (!selectedFiliere) return [];
     const codes = new Set<string>();
-    for (let n = selectedFiliere.niveau_debut; n <= selectedFiliere.niveau_fin; n++) {
+    const bornes = niveau && !ignoreNiveau
+      ? [Number(niveau), Number(niveau)]
+      : [selectedFiliere.niveau_debut, selectedFiliere.niveau_fin];
+    for (let n = bornes[0]; n <= bornes[1]; n++) {
       codes.add(`S${2 * n - 1}`);
       codes.add(`S${2 * n}`);
     }
     return semestres.filter(s => codes.has(s.code_semestre));
-  }, [selectedFiliere, semestres]);
+  }, [selectedFiliere, semestres, niveau, ignoreNiveau]);
 
-  // Si la filière change et que le semestre choisi n'est plus couvert → on le vide.
+  // Si la filière change, niveau et semestre précédents ne sont plus garantis couverts.
   function handleFiliere(id: number | null) {
     setFiliere(id);
+    setNiveau('');
+    setSemestre('');
+  }
+
+  // Changer de niveau invalide le semestre choisi (il appartenait à l'autre promotion).
+  function handleNiveau(v: string) {
+    setNiveau(v);
     setSemestre('');
   }
 
@@ -84,12 +109,15 @@ export default function GenererGroupePage() {
       annee_universitaire: annee,
       filiere:             Number(filiere),
       ...(needsSemestre && semestre ? { semestre: Number(semestre) } : {}),
+      ...(niveau && !ignoreNiveau ? { niveau: Number(niveau) } : {}),
     }),
     onSuccess: ({ blob, generated, total }) => {
-      // Nom : type_semestre_filiere_annee (ex. releve_semestre_S5_SDID_2025_2026.pdf).
+      // Nom : type_semestre_filiere_niveau_annee — le niveau distingue deux
+      // promotions d'une même filière, qui produiraient sinon des fichiers homonymes.
       const semCode = semestres.find(s => String(s.id) === semestre)?.code_semestre ?? '';
       const filCode = selectedFiliere?.code ?? '';
-      const name = [typeDoc, semCode, filCode, annee.replace(/-/g, '_')].filter(Boolean).join('_');
+      const nivCode = niveau && !ignoreNiveau ? `L${niveau}` : '';
+      const name = [typeDoc, semCode, filCode, nivCode, annee.replace(/-/g, '_')].filter(Boolean).join('_');
       const url = URL.createObjectURL(blob);
       const a   = document.createElement('a');
       a.href = url;
@@ -172,6 +200,28 @@ export default function GenererGroupePage() {
           </div>
           <FiliereSelect value={filiere} onChange={handleFiliere} required />
         </div>
+
+        {/* Niveau — cible une promotion précise */}
+        {!ignoreNiveau && (
+          <div>
+            <label className="text-sm font-medium text-iss-dark-soft block mb-1">Niveau</label>
+            <select value={niveau} onChange={e => handleNiveau(e.target.value)}
+              disabled={!filiere} className={INPUT}>
+              <option value="">
+                {!filiere ? "— Choisir d'abord une filière —" : 'Tous les niveaux de la filière'}
+              </option>
+              {niveauxFiltres.map(n => (
+                <option key={n} value={String(n)}>L{n}</option>
+              ))}
+            </select>
+            {filiere && niveauxFiltres.length > 1 && !niveau && (
+              <p className="text-xs text-amber-700 mt-1.5">
+                Cette filière couvre L{niveauxFiltres[0]} à L{niveauxFiltres[niveauxFiltres.length - 1]}.
+                Sans niveau, le PDF regroupe toutes les promotions inscrites cette année.
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Semestre (relevés uniquement) */}
         {needsSemestre && (
