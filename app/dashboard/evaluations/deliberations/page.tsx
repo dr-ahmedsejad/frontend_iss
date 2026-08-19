@@ -21,6 +21,8 @@ export default function DeliberationsPage() {
 
   const [page, setPage]     = useState(1);
   const [filterFiliere, setFilterFiliere] = useState<number | null>(null);
+  const [filterTypePv,  setFilterTypePv]  = useState<'' | 'semestriel' | 'annuel'>('');
+  const [filterSession, setFilterSession] = useState<'' | 'normale' | 'rattrapage'>('');
 
   const canEdit  = canAccess('evaluations_delib', 'modifier');
   const canReopen = isAdmin();
@@ -40,8 +42,14 @@ export default function DeliberationsPage() {
     if (filterFiliere)    f.filiere      = filterFiliere;
     if (anneeContexte)    f.annee_univ   = anneeContexte;
     if (semestreContexte) f.semestre_type = semestreContexte;
+    if (filterTypePv)     f.type_pv      = filterTypePv;
+    // Normale / rattrapage porte sur la session liée : sans objet pour un PV
+    // annuel (aucune session), on ne l'envoie donc jamais avec type_pv=annuel.
+    if (filterSession && filterTypePv !== 'annuel') {
+      f.session__type_session = filterSession;
+    }
     return f;
-  }, [page, filterFiliere, anneeContexte, semestreContexte]);
+  }, [page, filterFiliere, anneeContexte, semestreContexte, filterTypePv, filterSession]);
 
   const { data, isLoading, error: queryError } = useDeliberationsList(filters);
   const { rouvrir, remove } = useDeliberationsMutations();
@@ -161,9 +169,52 @@ export default function DeliberationsPage() {
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-card flex flex-wrap items-center justify-between gap-3">
-        <div className="w-52">
-          <FiliereSelect value={filterFiliere} onChange={v => { setFilterFiliere(v); load(1); }}
-            placeholder="Toutes filières" label="" />
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="w-52">
+            <FiliereSelect value={filterFiliere} onChange={v => { setFilterFiliere(v); load(1); }}
+              placeholder="Toutes filières" label="" />
+          </div>
+
+          <select
+            value={filterTypePv}
+            onChange={e => {
+              const v = e.target.value as '' | 'semestriel' | 'annuel';
+              setFilterTypePv(v);
+              // Un PV annuel n'a pas de session : on relâche le filtre normale/rattrapage
+              if (v === 'annuel') setFilterSession('');
+              load(1);
+            }}
+            aria-label="Type de délibération"
+            className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-iss-dark bg-white focus:outline-none focus:ring-2 focus:ring-iss-primary/20 focus:border-iss-primary"
+          >
+            <option value="">Tous les types</option>
+            <option value="semestriel">Semestrielle</option>
+            <option value="annuel">Annuelle</option>
+          </select>
+
+          <select
+            value={filterSession}
+            onChange={e => { setFilterSession(e.target.value as '' | 'normale' | 'rattrapage'); load(1); }}
+            disabled={filterTypePv === 'annuel'}
+            aria-label="Session de délibération"
+            title={filterTypePv === 'annuel'
+              ? "Les délibérations annuelles n'ont pas de session : la distinction normale / rattrapage ne s'applique qu'au semestre."
+              : 'Filtrer par session normale ou de rattrapage'}
+            className="border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-iss-dark bg-white focus:outline-none focus:ring-2 focus:ring-iss-primary/20 focus:border-iss-primary disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed"
+          >
+            <option value="">Toutes sessions</option>
+            <option value="normale">Normale</option>
+            <option value="rattrapage">Rattrapage</option>
+          </select>
+
+          {(filterFiliere || filterTypePv || filterSession) && (
+            <button
+              onClick={() => { setFilterFiliere(null); setFilterTypePv(''); setFilterSession(''); load(1); }}
+              className="text-xs font-semibold text-iss-gray hover:text-iss-dark underline underline-offset-2"
+            >
+              Réinitialiser
+            </button>
+          )}
         </div>
         {semestreContexte && (
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-iss-primary/5 border border-iss-primary/20"
