@@ -43,3 +43,11 @@ test('les espaces parasites ne gênent pas', () => {
 test('un nombre nu est accepté', () => {
   assert.equal(anneeEtudeDuNiveau('3'), 3);
 });
+
+test('un libellé sans chiffre laisse l’appelant se rabattre sur la clé', () => {
+  // D'autres instances nomment leurs niveaux « MP » / « MPSI ». `null` y est la
+  // bonne réponse : c'est à l'appelant de retomber sur la clé du référentiel,
+  // qui est déjà ce qu'il envoyait. Rendre 0 ou 1 inventerait une année d'étude.
+  assert.equal(anneeEtudeDuNiveau('MP'), null);
+  assert.equal(anneeEtudeDuNiveau('MPSI'), null);
+});

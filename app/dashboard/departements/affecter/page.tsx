@@ -105,10 +105,15 @@ function AffecterEtudiantsInner() {
   // sans un mot. AUCUN étudiant de L3 n'a jamais pu être affecté depuis cet
   // écran. `niveauId` reste la clé du référentiel — c'est elle qui filtre les
   // GROUPES cibles, dont le champ `niveau` est bien une clé étrangère.
+  //
+  // Repli sur la clé quand le libellé ne porte AUCUN chiffre. D'autres
+  // instances nomment leurs niveaux « MP », « MPSI » : là, seule la clé est
+  // disponible, et c'est déjà ce qui était envoyé. Le repli garantit qu'on ne
+  // fait jamais moins bien qu'avant, où que la correction soit appliquée.
   const anneeEtude = useMemo(() => {
     const n = niveaux.find(x => String(x.id) === niveauId);
     const a = anneeEtudeDuNiveau(n?.niveau);
-    return a === null ? '' : String(a);
+    return a === null ? niveauId : String(a);
   }, [niveaux, niveauId]);
 
   // Etudiants : filtre via la chaîne InscriptionAdministrative
