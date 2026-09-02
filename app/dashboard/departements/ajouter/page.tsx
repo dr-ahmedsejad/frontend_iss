@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Building, Loader2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
@@ -16,20 +16,34 @@ const INPUT = "w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm bg-g
 interface Niveau        { id: number; niveau: string; }
 interface DeptAcad     { id: number; code: string; intitule_fr: string; }
 
-export default function AjouterDepartementPage() {
+/**
+ * L'écran est ADRESSABLE : `?filiere=&niveau_code=&annee=` le pré-remplit.
+ *
+ * C'est ce qui permet à « Préparer la rentrée » d'ouvrir la création du groupe
+ * qui manque, déjà réglée sur la cohorte, au lieu de faire rejouer trois
+ * sélecteurs à la main. Sans paramètre, l'écran se comporte exactement comme
+ * avant.
+ *
+ * Le niveau arrive en CODE (« L2 ») et non en identifiant : le code est stable
+ * d'un référentiel à l'autre, l'identifiant non. Il est résolu ci-dessous, une
+ * fois la liste des niveaux chargée.
+ */
+function AjouterDepartementInner() {
   const router = useRouter();
   const user   = getStoredUser();
+  const params = useSearchParams();
 
   const [nom,                setNom]                = useState('');
   const [code,               setCode]               = useState('');
   const [description,        setDescription]        = useState('');
   const [niveau,             setNiveau]             = useState('');
-  const [anneeUniversitaire] = useState(user?.annee_universitaire ?? '');
+  const [anneeUniversitaire] = useState(
+    params.get('annee') || user?.annee_universitaire || '');
   const [decalageImpair,     setDecalageImpair]     = useState('0');
   const [decalagePair,       setDecalagePair]       = useState('0');
   const [groupe,             setGroupe]             = useState('');
   const [deptAcad,           setDeptAcad]           = useState('');
-  const [filiere,            setFiliere]            = useState('');
+  const [filiere,            setFiliere]            = useState(params.get('filiere') ?? '');
   const [isContainer,        setIsContainer]        = useState(false);
   const [error,              setError]              = useState<string | null>(null);
 
@@ -38,6 +52,15 @@ export default function AjouterDepartementPage() {
     queryFn:  () => apiFetch<Niveau[]>('/api/v1/parametres/niveaux/all/'),
   });
   const niveaux = niveauxQuery.data ?? [];
+
+  // « L2 » → l'identifiant du niveau, une fois le référentiel chargé. On ne
+  // touche pas à un choix déjà fait par l'utilisateur.
+  const niveauDemande = params.get('niveau_code');
+  useEffect(() => {
+    if (!niveauDemande || niveau || niveaux.length === 0) return;
+    const trouve = niveaux.find(n => n.niveau === niveauDemande);
+    if (trouve) setNiveau(String(trouve.id));
+  }, [niveauDemande, niveau, niveaux]);
 
   const deptsAcadQuery = useQuery({
     queryKey: ['scolarite', 'departements-academiques', { page_size: 200 }] as const,
@@ -71,7 +94,7 @@ export default function AjouterDepartementPage() {
     if (niveau) payload.niveau = Number(niveau);
     create.mutate(payload as never, {
       onSuccess: () => {
-        setFlash('Département ajouté avec succès');
+        setFlash('Groupe ajouté avec succès');
         router.push('/dashboard/departements');
       },
       onError: (e) => setError(e instanceof Error ? e.message : 'Erreur'),
@@ -225,5 +248,22 @@ export default function AjouterDepartementPage() {
         {error && <p className="mt-2 text-xs text-iss-secondary">{error}</p>}
       </div>
     </div>
+  );
+}
+
+
+/**
+ * `useSearchParams` impose une frontière Suspense : sans elle, le rendu
+ * statique de cette page échoue au build.
+ */
+export default function AjouterDepartementPage() {
+  return (
+    <Suspense fallback={
+      <div className="p-6 flex items-center gap-2 text-sm text-gray-500">
+        <Loader2 size={16} className="animate-spin" /> Chargement…
+      </div>
+    }>
+      <AjouterDepartementInner />
+    </Suspense>
   );
 }

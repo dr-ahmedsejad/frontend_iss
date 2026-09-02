@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Users, Search, Loader2, CheckCircle2, ArrowRight,
@@ -10,6 +11,7 @@ import {
 import { apiFetch } from '@/lib/api';
 import { etudiantsApi } from '@/lib/api/scolarite';
 import { getStoredUser } from '@/lib/auth';
+import { anneeEtudeDuNiveau } from '@/lib/niveaux';
 import { useToast, ToastContainer } from '@/components/ui/Toast';
 import type { Etudiant } from '@/types/scolarite';
 
@@ -22,9 +24,16 @@ interface Filiere { id: number; code: string; intitule_fr: string; }
 interface Niveau  { id: number; niveau: string; }
 interface AnneeOption { id: number; annee: string; }
 
-export default function AffecterEtudiantsPage() {
+/**
+ * L'écran est ADRESSABLE : `?annee=&filiere=&niveau_code=` le pré-filtre.
+ *
+ * « Préparer la rentrée » s'en sert pour ouvrir l'affectation d'une cohorte
+ * précise. Sans paramètre, l'écran se comporte exactement comme avant.
+ */
+function AffecterEtudiantsInner() {
   const user         = getStoredUser();
-  const defaultAnnee = user?.annee_universitaire ?? '';
+  const params       = useSearchParams();
+  const defaultAnnee = params.get('annee') || user?.annee_universitaire || '';
   const toast        = useToast();
   const qc           = useQueryClient();
 
@@ -32,7 +41,7 @@ export default function AffecterEtudiantsPage() {
   // par groupe source). Tous les groupes (départements) correspondants deviennent
   // potentiellement des cibles d'affectation.
   const [annee,        setAnnee]        = useState(defaultAnnee);
-  const [filiereId,    setFiliereId]    = useState<string>('');
+  const [filiereId,    setFiliereId]    = useState<string>(params.get('filiere') ?? '');
   const [niveauId,     setNiveauId]     = useState<string>('');
   const [search,       setSearch]       = useState('');
   const [selectedIds,  setSelectedIds]  = useState<Set<number>>(new Set());
@@ -41,7 +50,7 @@ export default function AffecterEtudiantsPage() {
   const anneesQuery = useQuery({
     queryKey: ['parametres', 'years', 'all'] as const,
     queryFn:  async () => {
-      const list = await apiFetch<AnneeOption[]>('/api/v1/parametres/years/all/').catch(() => [] as AnneeOption[]);
+      const list = await apiFetch<AnneeOption[]>('/api/v1/parametres/annees/all/').catch(() => [] as AnneeOption[]);
       return [...list].sort((a, b) => b.annee.localeCompare(a.annee));
     },
   });
@@ -60,6 +69,15 @@ export default function AffecterEtudiantsPage() {
     queryFn:  () => apiFetch<Niveau[]>('/api/v1/parametres/niveaux/all/').catch(() => [] as Niveau[]),
   });
   const niveaux = niveauxQuery.data ?? [];
+
+  // « L2 » → l'identifiant du niveau. Le code est stable d'un référentiel à
+  // l'autre, l'identifiant non — d'où le passage par le libellé.
+  const niveauDemande = params.get('niveau_code');
+  useEffect(() => {
+    if (!niveauDemande || niveauId || niveaux.length === 0) return;
+    const trouve = niveaux.find(n => n.niveau === niveauDemande);
+    if (trouve) setNiveauId(String(trouve.id));
+  }, [niveauDemande, niveauId, niveaux]);
 
   // Departements de la filière+niveau+année — deviennent les groupes cibles
   const deptsQuery = useQuery({
@@ -80,17 +98,30 @@ export default function AffecterEtudiantsPage() {
   // Tous les départements correspondants deviennent des cibles potentielles
   const targetDepts = depts;
 
+  // `InscriptionAdministrative.niveau` est une ANNÉE D'ÉTUDE (1, 2, 3), pas la
+  // clé de `parametres.Niveau`. Les deux coïncidaient pour L1 et L2 — par
+  // accident — mais « L3 » porte la clé 5 : l'écran demandait au serveur le
+  // niveau 5, qui n'existe pas comme année d'étude, et la liste revenait vide
+  // sans un mot. AUCUN étudiant de L3 n'a jamais pu être affecté depuis cet
+  // écran. `niveauId` reste la clé du référentiel — c'est elle qui filtre les
+  // GROUPES cibles, dont le champ `niveau` est bien une clé étrangère.
+  const anneeEtude = useMemo(() => {
+    const n = niveaux.find(x => String(x.id) === niveauId);
+    const a = anneeEtudeDuNiveau(n?.niveau);
+    return a === null ? '' : String(a);
+  }, [niveaux, niveauId]);
+
   // Etudiants : filtre via la chaîne InscriptionAdministrative
   // (annee_univ + filiere + niveau) — source de vérité historique. Permet de
   // retrouver les étudiants d'une année donnée même si leur Etudiant.filiere
   // a depuis muté (progression vers année suivante).
-  const canLoadEtudiants = !!annee && !!filiereId && !!niveauId;
+  const canLoadEtudiants = !!annee && !!filiereId && !!anneeEtude;
   const etudiantsQuery = useQuery({
-    queryKey: ['etudiants', 'by-inscription', { annee, filiereId, niveauId, page_size: 500 }] as const,
+    queryKey: ['etudiants', 'by-inscription', { annee, filiereId, anneeEtude, page_size: 500 }] as const,
     queryFn:  async () => {
       const p = new URLSearchParams({
         inscrit_filiere: filiereId,
-        inscrit_niveau:  niveauId,
+        inscrit_niveau:  anneeEtude,
         inscrit_annee:   annee,
         page_size:       '500',
       });
@@ -421,5 +452,22 @@ export default function AffecterEtudiantsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+
+/**
+ * `useSearchParams` impose une frontière Suspense : sans elle, le rendu
+ * statique de cette page échoue au build.
+ */
+export default function AffecterEtudiantsPage() {
+  return (
+    <Suspense fallback={
+      <div className="p-6 flex items-center gap-2 text-sm text-gray-500">
+        <Loader2 size={16} className="animate-spin" /> Chargement…
+      </div>
+    }>
+      <AffecterEtudiantsInner />
+    </Suspense>
   );
 }

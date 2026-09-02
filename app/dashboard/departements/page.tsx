@@ -10,6 +10,7 @@ import { ConfirmModal } from '@/components/ConfirmModal';
 import { popFlash } from '@/lib/flash';
 import { useTimeout } from '@/hooks/useTimeout';
 import { getStoredUser } from '@/lib/auth';
+import { RentreeBanner } from '@/components/RentreeBanner';
 import { useDepartementsList, useDepartementsMutations } from '@/lib/api/departements-hooks';
 import { useFilieresList } from '@/lib/api/scolarite-hooks';
 import type { Departement } from '@/lib/api/departements';
@@ -131,7 +132,7 @@ export default function DepartementsPage() {
     };
     if (form.niveau) payload.niveau = Number(form.niveau);
 
-    const onSuccess = () => { closeForm(); showToast(editing ? 'Département modifié' : 'Département ajouté'); };
+    const onSuccess = () => { closeForm(); showToast(editing ? 'Groupe modifié' : 'Groupe ajouté'); };
     const onError   = (e: unknown) => setFormError(e instanceof Error ? e.message : 'Erreur');
     if (editing) update.mutate({ id: editing.id, input: payload }, { onSuccess, onError });
     else         create.mutate(payload, { onSuccess, onError });
@@ -141,7 +142,7 @@ export default function DepartementsPage() {
     if (!toDelete) return;
     const id = toDelete.id;
     remove.mutate(id, {
-      onSuccess: () => showToast('Département supprimé'),
+      onSuccess: () => showToast('Groupe supprimé'),
       onError:   (e) => alert(e instanceof Error ? e.message : 'Erreur'),
       onSettled: () => setToDelete(null),
     });
@@ -168,11 +169,15 @@ export default function DepartementsPage() {
         </Link>
       </div>
 
+      {/* Rentrée à préparer — c'est ici qu'on crée les groupes qui manquent.
+          Rien ne s'affiche quand tous les réinscrits ont déjà un groupe. */}
+      <RentreeBanner />
+
       {/* Search */}
       <div className="relative">
         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-iss-gray pointer-events-none" />
         <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Rechercher un département…"
+          placeholder="Rechercher un groupe…"
           className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm bg-white focus:outline-none focus:border-[#006633] transition-all" />
       </div>
 
@@ -182,7 +187,7 @@ export default function DepartementsPage() {
           style={{ borderLeft: '3px solid #006633' }}>
           <div className="flex items-center justify-between mb-5">
             <h3 className="text-sm font-semibold text-iss-dark">
-              {editing ? 'Modifier le département' : 'Nouveau département'}
+              {editing ? 'Modifier le groupe' : 'Nouveau groupe'}
             </h3>
             <button onClick={closeForm} className="p-1 rounded-lg text-iss-gray hover:bg-gray-100 transition-colors">
               <X size={14} />
@@ -190,7 +195,7 @@ export default function DepartementsPage() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-iss-dark mb-1.5">Nom du département</label>
+              <label className="block text-xs font-semibold text-iss-dark mb-1.5">Nom du groupe</label>
               <input type="text" value={form.nom} onChange={e => set('nom', e.target.value)}
                 placeholder="ex : SEA L1 G1" className={INPUT} autoFocus />
             </div>
@@ -369,7 +374,7 @@ export default function DepartementsPage() {
               <Building size={26} style={{ color: '#006633', opacity: 0.5 }} />
             </div>
             <p className="text-sm font-semibold text-iss-dark mb-1">
-              {search ? 'Aucun résultat' : 'Aucun département enregistré'}
+              {search ? 'Aucun résultat' : 'Aucun groupe enregistré'}
             </p>
             {!search && (
               <><p className="text-xs text-iss-gray mb-4">Ajoutez les classes de l&apos;établissement.</p>
@@ -428,7 +433,7 @@ export default function DepartementsPage() {
 
       <ConfirmModal
         open={toDelete !== null}
-        title="Supprimer le département ?"
+        title="Supprimer le groupe ?"
         message={toDelete ? `Supprimer "${toDelete.nom}" ?` : ''}
         onConfirm={handleDelete}
         onCancel={() => setToDelete(null)}

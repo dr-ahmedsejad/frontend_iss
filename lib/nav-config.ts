@@ -68,6 +68,41 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: '/dashboard/emplois/prof',     label: 'Emplois professeur' },
     ],
   },
+  // COEXISTENCE. Le groupe ci-dessus est l'emploi du temps HISTORIQUE : une
+  // grille unique par annee et par parite, sans numero de semaine. Il reste en
+  // service, entier, et rien ne lui est retire.
+  //
+  // Celui-ci est le moteur HEBDOMADAIRE : un patron par groupe, duplique sur
+  // les semaines, puis modifiable semaine par semaine. Les deux alimentent la
+  // meme table `emplois.Emplois` — l'un par saisie directe, l'autre par
+  // projection — et le libelle doit dire sans ambiguite duquel il s'agit.
+  //
+  // Le retrait de l'ancien fera l'objet d'une decision explicite, plus tard.
+  {
+    // Les libelles sont ceux de l'ESP, mot pour mot. Seul le libelle du GROUPE
+    // est precise : « Emploi du temps » et « Emplois du temps » ne different
+    // que d'une lettre, et les deux groupes sont ici cote a cote — l'ESP, lui,
+    // avait supprime ses ecrans du socle et n'avait pas ce voisin.
+    //
+    // Deux entrees s'ajoutent aux cinq de l'ESP : « Emploi de la semaine » et
+    // « Demandes de salle ». A l'ESP ces deux ecrans ne figurent dans aucun
+    // menu et ne sont lies que l'un a l'autre — l'ecran ou l'on MODIFIE une
+    // semaine, c'est-a-dire le coeur du moteur, n'a donc pas de porte
+    // d'entree. C'est la meme perte que celle du brief a propos d'« Importer
+    // EDT depuis le suivi » : un endpoint vivant que plus aucune interface
+    // n'appelle.
+    key: 'edt', icon: CalendarDays, label: 'Emploi du temps (par semaine)',
+    roles: ALL, module: 'emplois',
+    items: [
+      { href: '/dashboard/emplois/edt/grille',      label: 'Gérer les emplois', action: 'modifier' },
+      { href: '/dashboard/emplois/edt/semaine',     label: 'Emploi de la semaine', action: 'modifier' },
+      { href: '/dashboard/emplois/edt/classe',      label: 'Emploi par classe' },
+      { href: '/dashboard/emplois/edt/enseignant',  label: 'Emploi par enseignant' },
+      { href: '/dashboard/emplois/edt/salle',       label: 'Occupation des salles' },
+      { href: '/dashboard/emplois/edt/historique',  label: 'Historique' },
+      { href: '/dashboard/emplois/edt/liberations', label: 'Demandes de salle' },
+    ],
+  },
   {
     key: 'suivi', icon: ClipboardList, label: 'Suivi',
     roles: ALL, module: 'suivi_fiches',
@@ -364,6 +399,9 @@ export const NAV_GROUPS: NavGroup[] = [
     roles: SCOLARITE, module: 'insc_progression',
     items: [
       { href: '/dashboard/scolarite/progressions', label: 'Gérer les progressions', module: 'insc_progression', action: 'modifier' },
+      // La suite immédiate du même travail : une fois les progressions
+      // exécutées, les étudiants restent à rattacher à un groupe de l'année.
+      { href: '/dashboard/scolarite/rentree',      label: 'Préparer la rentrée',   module: 'insc_progression', action: 'modifier' },
     ],
   },
   {

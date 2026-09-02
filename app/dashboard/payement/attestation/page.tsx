@@ -139,7 +139,7 @@ export default function AttestationPage() {
   const anneesQuery = useQuery({
     queryKey: ['parametres', 'years', 'all'] as const,
     queryFn:  async () => {
-      const list = await apiFetch<AnneeOption[]>('/api/v1/parametres/years/all/').catch(() => [] as AnneeOption[]);
+      const list = await apiFetch<AnneeOption[]>('/api/v1/parametres/annees/all/').catch(() => [] as AnneeOption[]);
       return [...list].sort((a, b) => b.annee.localeCompare(a.annee));
     },
   });

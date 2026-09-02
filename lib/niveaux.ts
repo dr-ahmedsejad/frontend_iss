@@ -47,3 +47,22 @@ export function clampNiveau(niveau: number, typeDiplome: TypeDiplomeKey): number
   const { count } = getNiveauxConfig(typeDiplome);
   return Math.max(1, Math.min(niveau, count));
 }
+
+/**
+ * L'année d'étude que porte un libellé de niveau : « L3 » → 3.
+ *
+ * `parametres.Niveau` est un référentiel : sa clé primaire n'a aucun rapport
+ * avec l'année d'étude. Sur la base `iss`, L1 vaut 1 et L2 vaut 2 — par
+ * coïncidence — mais **L3 porte la clé 5**, et « Transversal » la clé 4.
+ *
+ * Or `InscriptionAdministrative.niveau` est une ANNÉE D'ÉTUDE (1, 2, 3). Passer
+ * la clé du référentiel là où le serveur attend l'année d'étude marche pour L1
+ * et L2, et renvoie silencieusement une liste vide pour L3. C'est exactement ce
+ * qui empêchait d'affecter le moindre étudiant de L3.
+ *
+ * Rend `null` pour un libellé qui ne porte pas d'année — « Transversal ».
+ */
+export function anneeEtudeDuNiveau(libelle: string | null | undefined): number | null {
+  const trouve = /^\s*[A-Za-z]*\s*(\d+)\s*$/.exec(libelle ?? '');
+  return trouve ? Number(trouve[1]) : null;
+}

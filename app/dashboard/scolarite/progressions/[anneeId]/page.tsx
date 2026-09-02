@@ -11,10 +11,14 @@ import { apiFetch } from '@/lib/api';
 import { useToast, ToastContainer } from '@/components/ui/Toast';
 import { ConfirmModal } from '@/components/ConfirmModal';
 import { ChangerFiliereModal, type ProgressionLike } from '@/components/ChangerFiliereModal';
+import { RentreeBanner } from '@/components/RentreeBanner';
+import { rentreeKeys } from '@/lib/api/rentree-hooks';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface Progression extends ProgressionLike {
+  /** 'M' / 'F' — sert à accorder le statut affiché. */
+  genre:          string;
   decision:       string;
   decision_label: string;
   statut:         string;
@@ -42,19 +46,40 @@ const STATUT_ICON: Record<string, React.ReactNode> = {
   annulee:    <XCircle   size={14} className="text-red-500"    />,
 };
 
+/** Accord en genre. Masculin par défaut : `genre` peut manquer ou valoir autre chose. */
+const accord = (genre: string, masculin: string, feminin: string) =>
+  (genre === 'F' ? feminin : masculin);
+
 // Libellé de statut ADAPTÉ à la décision : un diplômé (ou un exclu) n'est PAS
 // « en attente de réinscription » — aucune inscription N+1 n'est créée pour eux
 // (cf. ReinscriptionService.executer). On ne parle de « réinscription » que pour
 // les décisions qui créent réellement une inscription l'année suivante.
+//
+// Une fois la décision EXÉCUTÉE, le libellé parle de la PERSONNE — « Inscrite »,
+// « Diplômée », « Exclue » — et s'accorde donc avec son genre. Le libellé du
+// socle, « Inscription N+1 créée », décrivait une écriture en base : exact, mais
+// ce n'est pas ce qu'on lit dans une colonne en face d'un nom.
+//
+// Les statuts NON exécutés ne s'accordent pas, et c'est voulu : « En attente de
+// réinscription », « Modifiée par l'administration », « Annulée » qualifient la
+// progression, pas l'étudiant.
 function statutLabel(prog: Progression): string {
   if (prog.statut === 'annulee') return prog.statut_label; // « Annulée » inchangé
   if (prog.decision === 'diplomation') {
-    return prog.statut === 'executee' ? 'Diplômé' : 'En attente de finalisation du diplôme';
+    return prog.statut === 'executee'
+      ? accord(prog.genre, 'Diplômé', 'Diplômée')
+      : 'En attente de finalisation du diplôme';
   }
   if (prog.decision === 'exclusion') {
-    return prog.statut === 'executee' ? 'Exclu' : 'En attente de traitement';
+    return prog.statut === 'executee'
+      ? accord(prog.genre, 'Exclu', 'Exclue')
+      : 'En attente de traitement';
   }
-  return prog.statut_label; // progression / redoublement / année blanche : inchangé
+  // Progression, redoublement, année blanche : une inscription N+1 existe.
+  if (prog.statut === 'executee') {
+    return accord(prog.genre, 'Inscrit', 'Inscrite');
+  }
+  return prog.statut_label;
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
@@ -68,20 +93,31 @@ export default function ProgressionsPage() {
 
   const [filterDecision, setFilterDecision] = useState('');
   const [filterStatut,   setFilterStatut]   = useState('');
+  // La filière se filtre sur SES DEUX AXES, parce que l'écran sert à deux
+  // gestes : traiter une promotion à la fois (source), et relire les
+  // orientations posées — surtout celles qui manquent (cible).
+  const [filterSource,   setFilterSource]   = useState('');
+  const [filterCible,    setFilterCible]    = useState('');
 
   const [confirmExec, setConfirmExec] = useState(false);
   const [modalProg,   setModalProg]   = useState<Progression | null>(null);
 
   const queryKey = useMemo(
-    () => ['inscriptions', 'progressions', { anneeId, filterDecision, filterStatut }] as const,
-    [anneeId, filterDecision, filterStatut],
+    () => ['inscriptions', 'progressions',
+           { anneeId, filterDecision, filterStatut, filterSource, filterCible }] as const,
+    [anneeId, filterDecision, filterStatut, filterSource, filterCible],
   );
   const { data, isLoading, error: queryError } = useQuery({
     queryKey,
     queryFn:  () => {
       const params: Record<string, string> = { annee_cible: anneeId };
-      if (filterDecision) params.decision = filterDecision;
-      if (filterStatut)   params.statut   = filterStatut;
+      if (filterDecision) params.decision       = filterDecision;
+      if (filterStatut)   params.statut         = filterStatut;
+      if (filterSource)   params.filiere_source = filterSource;
+      // `aucune` demande les progressions NON ORIENTÉES. Un identifiant ne peut
+      // pas exprimer « aucun », et une chaîne vide serait indistinguable de
+      // « toutes les filières ».
+      if (filterCible)    params.filiere_cible  = filterCible;
       const qs = new URLSearchParams(params).toString();
       return apiFetch<Progression[]>(`/api/v1/inscriptions/progressions/?${qs}`);
     },
@@ -106,6 +142,38 @@ export default function ProgressionsPage() {
     [allData],
   );
 
+  // Les filières proposées viennent de `allItems`, la liste NON filtrée de
+  // l'année — pas d'un appel au référentiel. Deux raisons : aucune requête de
+  // plus, et surtout on n'offre que des filières qui ont réellement des
+  // progressions. Un choix qui ne renvoie jamais rien se lit comme une panne.
+  const filieresSource = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const p of allItems) m.set(p.filiere_source.id, p.filiere_source.code);
+    return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [allItems]);
+
+  const filieresCible = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const p of allItems) {
+      if (p.filiere_cible) m.set(p.filiere_cible.id, p.filiere_cible.code);
+    }
+    return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [allItems]);
+
+  // Combien de lignes le filtre « Sans filière cible » renverra.
+  //
+  // On compte EXACTEMENT ce que le filtre renvoie, sans restreindre aux
+  // progressions : un compte qui ne correspond pas au résultat se lit comme
+  // une panne. La nuance importe ici — sur 2026-2027, les 41 lignes sans
+  // filière cible sont 39 diplômés et 2 exclus, qui n'attendent aucune
+  // orientation. Les annoncer comme « non orientés » ferait chercher un
+  // travail qui n'existe pas. Ceux qui restent VRAIMENT à orienter sont
+  // signalés là où c'est utile : dans la confirmation d'exécution.
+  const nbSansCible = useMemo(
+    () => allItems.filter(p => !p.filiere_cible).length,
+    [allItems],
+  );
+
   const executerMut = useMutation({
     mutationFn: () => apiFetch<{ stats: Record<string, number>; annee: string }>(
       '/api/v1/inscriptions/progressions/executer/',
@@ -116,11 +184,16 @@ export default function ProgressionsPage() {
         progression = 0, redoublement = 0, annee_blanche = 0,
         exclusion = 0, diplomation = 0,
       } = result.stats;
+      // On enchaîne sur l'étape suivante. Sans cette phrase, l'écran affichait
+      // « exécutées » et le travail avait l'air fini — alors qu'aucun étudiant
+      // n'est encore rattaché à un groupe de l'année qui vient.
       toast.success(
         `Réinscriptions exécutées : ${progression} passages, ${redoublement} redoublements, `
-        + `${annee_blanche} années blanches, ${exclusion} exclusions, ${diplomation} diplômés.`,
+        + `${annee_blanche} années blanches, ${exclusion} exclusions, ${diplomation} diplômés. `
+        + `Prochaine étape : affecter ces étudiants à leurs groupes.`,
       );
       qc.invalidateQueries({ queryKey });
+      qc.invalidateQueries({ queryKey: rentreeKeys.all });
       setConfirmExec(false);
     },
     onError: (e) => { toast.error((e as Error).message); setConfirmExec(false); },
@@ -217,6 +290,17 @@ export default function ProgressionsPage() {
         </div>
       </div>
 
+      {/* Rattachement aux groupes — l'étape que l'exécution ne fait pas.
+          Le bandeau ne s'affiche que s'il reste des étudiants à affecter.
+
+          Sans `anneeId` : c'est le serveur qui retient l'année à préparer, et
+          non celle de cette page. Un étudiant n'a qu'un seul groupe, sans
+          année — dès qu'il monte d'année, il « quitte » rétroactivement la
+          précédente, si bien que toute année passée paraît incomplète
+          (2024-2025 : 51 sur 103). Lier le bandeau à la page ferait crier une
+          alarme sur une rentrée faite depuis longtemps. */}
+      <RentreeBanner />
+
       {/* KPI */}
       <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
         {[
@@ -260,6 +344,47 @@ export default function ProgressionsPage() {
           <option value="executee">Exécutée</option>
           <option value="annulee">Annulée</option>
         </select>
+        <select
+          value={filterSource}
+          onChange={e => setFilterSource(e.target.value)}
+          className="border border-slate-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#006633]/40"
+          aria-label="Filtrer par filière d'origine"
+        >
+          <option value="">Toutes les filières d&apos;origine</option>
+          {filieresSource.map(([id, code]) => (
+            <option key={id} value={id}>{code}</option>
+          ))}
+        </select>
+        <select
+          value={filterCible}
+          onChange={e => setFilterCible(e.target.value)}
+          className="border border-slate-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#006633]/40"
+          aria-label="Filtrer par filière cible"
+        >
+          <option value="">Toutes les filières cibles</option>
+          {filieresCible.map(([id, code]) => (
+            <option key={id} value={id}>{code}</option>
+          ))}
+          {/* Diplômés, exclus, et progressions pas encore orientées : tous
+              ceux dont la colonne « Filière cible » est vide. */}
+          <option value="aucune">
+            Sans filière cible{nbSansCible ? ` (${nbSansCible})` : ''}
+          </option>
+        </select>
+        {(filterDecision || filterStatut || filterSource || filterCible) && (
+          <button
+            onClick={() => {
+              setFilterDecision(''); setFilterStatut('');
+              setFilterSource('');   setFilterCible('');
+            }}
+            className="text-sm text-slate-500 underline hover:text-slate-700"
+          >
+            Réinitialiser
+          </button>
+        )}
+        <span className="text-sm text-slate-500 ml-auto tabular-nums">
+          {items.length} sur {allItems.length}
+        </span>
       </div>
 
       {/* Tableau */}
