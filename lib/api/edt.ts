@@ -245,6 +245,22 @@ export const edtApi = {
     return apiFetch<SeanceReelle[]>(`${BASE}/seances/semaine/?${p}`);
   },
 
+  /**
+   * Pose une séance sur UNE semaine, hors patron. `semaine` est la ligne-JOUR
+   * du calendrier (`parametres.Semaine` : une ligne par jour), pas le numéro.
+   */
+  creerSeance: (body: Partial<SeanceReelle>) =>
+    apiFetch<SeanceReelle>(`${BASE}/seances/`, { method: 'POST', body }),
+
+  /**
+   * Échange enseignant, salle et élément entre deux séances du MÊME créneau,
+   * sur cette semaine ou un lot de semaines. Le créneau ne bouge pas.
+   */
+  permuter: (body: { seance_a: number; seance_b: number;
+                     nb_semaines?: number; motif?: string }) =>
+    apiFetch<{ seances_impactees: number }>(
+      `${BASE}/seances/permuter/`, { method: 'POST', body }),
+
   majSeance: (id: number, body: Partial<SeanceReelle>) =>
     apiFetch<SeanceReelle>(`${BASE}/seances/${id}/`, { method: 'PATCH', body }),
 

@@ -11,6 +11,7 @@ import { BoutonPDF, GrilleConsultation, SelecteurSemaine } from '../_consultatio
 import { useGroupesEDT } from '../_referentiels';
 import { jjmmaa, useSemainesCours } from '../_semaines';
 import { edtApi } from '@/lib/api/edt';
+import { libelleComplet } from '@/lib/nom-groupe';
 
 import { anneeParDefaut, libelleSemestreSession, typeSemestreSession } from '../_annee';
 
@@ -51,7 +52,7 @@ export default function EdtParGroupePage() {
     <div className="space-y-4">
       <EnTetePage
         icone={<Users size={14} className="text-white" />}
-        titre="Emploi du temps par groupe"
+        titre="Emploi du temps par filière"
         actions={groupeId ? (
           <BoutonPDF
             actif={!!numero}
@@ -71,7 +72,7 @@ export default function EdtParGroupePage() {
                 réapprennent à chaque fois. */}
             <AC value={groupeId ? String(groupeId) : ''} grand
                 placeholder="Nom du groupe…"
-                options={groupes.map(g => ({ id: String(g.id), label: g.nom }))}
+                options={groupes.map(g => ({ id: String(g.id), label: libelleComplet(g) }))}
                 onChange={v => setGroupeId(v ? Number(v) : null)} />
           </div>
           <div>

@@ -72,7 +72,13 @@ export default function AjouterSuiviPage() {
     return `Semaine ${n} (du ${fmtDateShort(r.date_debut)} au ${fmtDateShort(r.date_fin)})`;
   };
 
-  const semainesGenereesKey = ['suivi', 'semaines-generees', annee, ts] as const;
+  // Clé DISTINCTE de celle des huit autres écrans (fiches, absences,
+  // remplissage…) : eux rangent sous `['suivi', 'semaines-generees', …]` une
+  // LISTE de numéros, cet écran range l'OBJET complet (current_week,
+  // authorized_weeks…). Partager la clé faisait servir l'objet à l'écran
+  // suivant, qui appelait `.map` dessus — « semainesGlobal.map is not a
+  // function » sur les fiches individuelles, juste après une génération.
+  const semainesGenereesKey = ['suivi', 'semaines-generees', 'detail', annee, ts] as const;
   const semainesGenereesQuery = useQuery({
     queryKey: semainesGenereesKey,
     // staleTime: 0 -> refetch a chaque mount de la page pour capter les nouvelles
@@ -205,7 +211,13 @@ export default function AjouterSuiviPage() {
     return n < currentWeek - graceWeeks;
   };
   const canGenerate = (n: number) => !isPastBlocked(n);
-  const canGenerateSelected = selected !== null
+  // Le suivi se génère dans l'ordre et se refait en RECULANT depuis la
+  // dernière semaine : régénérer la 1 quand la 2 existe réécrirait un pointage
+  // sur lequel la suite s'appuie. Même règle que pour la suppression, déjà
+  // ordonnée ci-dessus — et même règle que le serveur, qui refuse (409).
+  const bloqueeParLaSuite = selected !== null && maxGenerated !== null
+    && selected < maxGenerated;
+  const canGenerateSelected = selected !== null && !bloqueeParLaSuite
     && (isGenerated(selected) || canGenerate(selected));
 
   // Liste affichee : TOUTES les semaines sont visibles (admin ou pas).
@@ -394,7 +406,13 @@ export default function AjouterSuiviPage() {
                 {busy ? <Loader2 size={15} className="animate-spin" /> : <Play size={15} />}
                 Générer le suivi semaine {selected}
               </button>
-              {!canGenerateSelected && (
+              {bloqueeParLaSuite ? (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                  La semaine {maxGenerated} est déjà générée. Le suivi se refait en
+                  reculant depuis la dernière semaine : supprimez d&apos;abord
+                  la semaine {maxGenerated}.
+                </p>
+              ) : !canGenerateSelected && (
                 <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
                   Génération impossible — cette semaine est passée. Contactez un administrateur pour le rattrapage.
                 </p>
@@ -409,8 +427,11 @@ export default function AjouterSuiviPage() {
             <div className="flex flex-col sm:flex-row gap-3">
               <button
                 onClick={generate}
-                disabled={busy}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-semibold transition-all disabled:opacity-50"
+                disabled={busy || bloqueeParLaSuite}
+                title={bloqueeParLaSuite
+                  ? `Supprimez d'abord la semaine ${maxGenerated} : le suivi se refait en reculant`
+                  : undefined}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ background: 'linear-gradient(135deg, #006633, #008844)' }}>
                 {busy ? <Loader2 size={15} className="animate-spin" /> : <Play size={15} />}
                 Regénérer semaine {selected}

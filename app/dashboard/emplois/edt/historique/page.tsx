@@ -9,6 +9,7 @@ import { BTN_FLECHE, GrilleConsultation } from '../_consultation';
 import { useGroupesEDT } from '../_referentiels';
 import { jjmmaa } from '../_semaines';
 import { edtApi } from '@/lib/api/edt';
+import { libelleComplet } from '@/lib/nom-groupe';
 
 import { anneeParDefaut, libelleSemestreSession, typeSemestreSession } from '../_annee';
 
@@ -114,7 +115,7 @@ export default function HistoriqueEdtPage() {
               <option value="">— Groupe —</option>
               {groupes.map(g => (
                 <option key={g.id} value={g.id}>
-                  {g.nom}{g.groupe ? ` — ${g.groupe}` : ''}
+                  {libelleComplet(g)}
                 </option>
               ))}
             </select>

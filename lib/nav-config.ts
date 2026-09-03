@@ -95,12 +95,10 @@ export const NAV_GROUPS: NavGroup[] = [
     roles: ALL, module: 'emplois',
     items: [
       { href: '/dashboard/emplois/edt/grille',      label: 'Gérer les emplois', action: 'modifier' },
-      { href: '/dashboard/emplois/edt/semaine',     label: 'Emploi de la semaine', action: 'modifier' },
-      { href: '/dashboard/emplois/edt/classe',      label: 'Emploi par classe' },
+      { href: '/dashboard/emplois/edt/classe',      label: 'Emploi par filière' },
       { href: '/dashboard/emplois/edt/enseignant',  label: 'Emploi par enseignant' },
       { href: '/dashboard/emplois/edt/salle',       label: 'Occupation des salles' },
       { href: '/dashboard/emplois/edt/historique',  label: 'Historique' },
-      { href: '/dashboard/emplois/edt/liberations', label: 'Demandes de salle' },
     ],
   },
   {
