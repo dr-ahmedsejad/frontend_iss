@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Plus, PlayCircle, LockKeyhole, Unlock, CalendarDays, Scale } from 'lucide-react';
 import { useSessionsList, useSessionsMutations } from '@/lib/api/evaluations-hooks';
@@ -27,6 +27,18 @@ export default function SessionsPage() {
 
   const canEdit    = canAccess('evaluations_notes', 'modifier');
   const canRouvrir = isAdmin();
+
+  // Un filtre qui change remet la pagination au debut. Sans cela, filtrer
+  // depuis la page 2 laissait `page=2` dans la requete : si le resultat
+  // filtre tient sur une page, DRF repond 404 « Invalid page » et l'ecran
+  // l'affiche comme une erreur — on croit la recherche cassee alors que
+  // c'est la page qui n'existe plus. Depuis la page 1, ca marchait : d'ou
+  // le caractere intermittent.
+  //
+  // Les dependances sont les FILTRES, jamais l'objet de parametres : il
+  // contient `page`, et l'effet se declencherait a chaque changement de
+  // page, interdisant toute navigation.
+  useEffect(() => { setPage(1); }, [filterType, filterSemestre]);
 
   const filters = useMemo(() => {
     const f: Record<string, string | number> = { page };

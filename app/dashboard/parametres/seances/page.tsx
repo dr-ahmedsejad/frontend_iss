@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, BookOpen, Plus, Pencil, Trash2, X, Loader2, CheckCircle, Search } from 'lucide-react';
 import { Pagination } from '@/components/Pagination';
@@ -16,6 +16,18 @@ const INPUT = "w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm bg-g
 export default function SeancesPage() {
   const [page,    setPage]    = useState(1);
   const [search,  setSearch]  = useState('');
+
+  // Un filtre qui change remet la pagination au debut. Sans cela, filtrer
+  // depuis la page 2 laissait `page=2` dans la requete : si le resultat
+  // filtre tient sur une page, DRF repond 404 « Invalid page » et l'ecran
+  // l'affiche comme une erreur — on croit la recherche cassee alors que
+  // c'est la page qui n'existe plus. Depuis la page 1, ca marchait : d'ou
+  // le caractere intermittent.
+  //
+  // Les dependances sont les FILTRES, jamais l'objet de parametres : il
+  // contient `page`, et l'effet se declencherait a chaque changement de
+  // page, interdisant toute navigation.
+  useEffect(() => { setPage(1); }, [search]);
 
   const { data, isLoading, error: queryError } = useSeancesList({ page, search });
   const { create, update, remove } = useSeancesMutations();
