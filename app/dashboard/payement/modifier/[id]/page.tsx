@@ -180,10 +180,13 @@ export default function ModifierVacationPage() {
   const seances = seancesQuery.data ?? [];
 
   const deptsQuery = useQuery({
-    queryKey: ['departements', 'list', 'modifier-vacation', anneeUniv] as const,
+    queryKey: ['departements', 'list', 'modifier-vacation'] as const,
     queryFn:  async () => {
       const p = new URLSearchParams();
-      if (anneeUniv) p.set('annee_universitaire', anneeUniv);
+      // Pas de filtre par annee : une vacation peut porter sur un groupe
+      // d'une autre annee que celle de la session, et restreindre la liste
+      // rendait ce groupe introuvable. L'annee reste un CHAMP de la
+      // vacation ; elle ne borne plus ce qu'on peut choisir.
       p.set('is_container', 'false');
       p.set('page_size', '500');
       // EDT scope : seuls les groupes geres par ce user sont selectionnables.
@@ -191,7 +194,6 @@ export default function ModifierVacationPage() {
       const r = await apiFetch<{ results: Departement[] } | Departement[]>(`/api/v1/departements/?${p}`).catch(() => [] as Departement[]);
       return Array.isArray(r) ? r : r.results;
     },
-    enabled: !!anneeUniv,
   });
   const depts = deptsQuery.data ?? [];
 
@@ -200,10 +202,13 @@ export default function ModifierVacationPage() {
   []);
 
   const emsQuery = useQuery({
-    queryKey: ['ems', 'vacation-modifier', anneeUniv || annee, typeSem] as const,
+    queryKey: ['ems', 'vacation-modifier', typeSem] as const,
     queryFn: async () => {
       const p = new URLSearchParams();
-      p.set('departement__annee_universitaire', anneeUniv || annee);
+      // Pas de filtre par annee : une vacation peut porter sur un groupe
+      // d'une autre annee que celle de la session, et restreindre la liste
+      // rendait ce groupe introuvable. L'annee reste un CHAMP de la
+      // vacation ; elle ne borne plus ce qu'on peut choisir.
       if (typeSem) p.set('semestre__type_semestre', typeSem);
       p.set('page_size', '500');
       const r = await apiFetch<{ results: EM[] } | EM[]>(`/api/v1/ems/?${p.toString()}`)
@@ -216,7 +221,6 @@ export default function ModifierVacationPage() {
       });
       return filtered.sort((a, b) => a.code_em.localeCompare(b.code_em));
     },
-    enabled: !!(anneeUniv || annee),
   });
   const ems = emsQuery.data ?? [];
 

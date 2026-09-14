@@ -176,10 +176,13 @@ export default function AjouterVacationPage() {
   const seances = seancesQuery.data ?? [];
 
   const deptsQuery = useQuery({
-    queryKey: ['departements', 'list', 'ajouter-vacation', anneeUniv] as const,
+    queryKey: ['departements', 'list', 'ajouter-vacation'] as const,
     queryFn:  async () => {
       const p = new URLSearchParams();
-      if (anneeUniv) p.set('annee_universitaire', anneeUniv);
+      // Pas de filtre par annee : une vacation peut porter sur un groupe
+      // d'une autre annee que celle de la session, et restreindre la liste
+      // rendait ce groupe introuvable. L'annee reste un CHAMP de la
+      // vacation ; elle ne borne plus ce qu'on peut choisir.
       // Exclure les conteneurs d'inscription (STATL1...) : pas de planning vacation.
       p.set('is_container', 'false');
       p.set('page_size', '500');
@@ -188,7 +191,6 @@ export default function AjouterVacationPage() {
       const r = await apiFetch<{ results: Departement[] } | Departement[]>(`/api/v1/departements/?${p}`).catch(() => [] as Departement[]);
       return Array.isArray(r) ? r : r.results;
     },
-    enabled: !!anneeUniv,
   });
   const depts = deptsQuery.data ?? [];
 
@@ -200,10 +202,13 @@ export default function AjouterVacationPage() {
   // EMs du semestre actif uniquement (les stages sont exclus : ils ne donnent pas
   // lieu a vacation puisque pris en charge dans le module Stages).
   const emsQuery = useQuery({
-    queryKey: ['ems', 'vacation-ajouter', 'edt-scope', anneeUniv || annee, typeSem] as const,
+    queryKey: ['ems', 'vacation-ajouter', 'edt-scope', typeSem] as const,
     queryFn: async () => {
       const params = new URLSearchParams();
-      params.set('departement__annee_universitaire', anneeUniv || annee);
+      // Pas de filtre par annee : une vacation peut porter sur un groupe
+      // d'une autre annee que celle de la session, et restreindre la liste
+      // rendait ce groupe introuvable. L'annee reste un CHAMP de la
+      // vacation ; elle ne borne plus ce qu'on peut choisir.
       if (typeSem) params.set('semestre__type_semestre', typeSem);
       params.set('page_size', '500');
       // EDT scope : ne propose que les EMs rattaches aux groupes geres
@@ -221,7 +226,6 @@ export default function AjouterVacationPage() {
       });
       return filtered.sort((a, b) => a.code_em.localeCompare(b.code_em));
     },
-    enabled: !!(anneeUniv || annee),
   });
   const ems = emsQuery.data ?? [];
 
