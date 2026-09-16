@@ -16,10 +16,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import { CalendarRange, ChevronLeft, ChevronRight, Copy, CopyPlus,
-         MoreHorizontal, Repeat, Save, Trash2, X } from 'lucide-react';
+import { ArrowUpToLine, CalendarRange, ChevronLeft, ChevronRight, Copy,
+         CopyPlus, MoreHorizontal, Repeat, Save, Trash2, X } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { edtApi, type GrilleType, type OccupationType,
+         type ResultatDuplication, type ResultatReprise,
          type SeanceReelle } from '@/lib/api/edt';
 import { useToast, ToastContainer } from '@/components/ui/Toast';
 import { ConfirmModal } from '@/components/ConfirmModal';
@@ -92,6 +93,21 @@ export default function GrilleTypePage() {
   const [depuis, setDepuis]   = useState('1');
   const [nombre, setNombre]   = useState('16');
   const [ecraser, setEcraser] = useState(false);
+  /** « patron » ou « semaine » : ce qu'on duplique. Le patron reste le défaut —
+   *  c'est le geste historique, et le changer sous les doigts surprendrait. */
+  const [dupSource, setDupSource] = useState<'patron' | 'semaine'>('patron');
+  const [dupSemaineSource, setDupSemaineSource] = useState('');
+  /** La promotion inverse : une semaine déjà bâtie devient le patron.
+   *  Sa fenêtre est SÉPARÉE de celle de la duplication — les deux vont en sens
+   *  contraires, et les mêler dans un seul formulaire ferait choisir un sens
+   *  au milieu de champs qui ne servent qu'à l'autre. */
+  const [repriseOuverte, setRepriseOuverte] = useState(false);
+  const [repriseSemaine, setRepriseSemaine] = useState('');
+  const [repriseEcraser, setRepriseEcraser] = useState(false);
+  const [bilanReprise, setBilanReprise] = useState<ResultatReprise | null>(null);
+  /** Le compte rendu, gardé À L'ÉCRAN : un toast fugace sur « 0 séance créée »
+   *  ressemblait à une panne, et les refus n'avaient nulle part où se lire. */
+  const [bilan, setBilan] = useState<ResultatDuplication | null>(null);
 
   /**
    * Mode semaine.
@@ -488,16 +504,35 @@ export default function GrilleTypePage() {
       depuis: Number(depuis) || undefined,
       nombre: Number(nombre) || undefined,
       ecraser,
+      source: dupSource,
+      ...(dupSource === 'semaine'
+        ? { semaine_source: Number(dupSemaineSource) }
+        : {}),
     }),
-    onSuccess: (r) => {
-      setDupOuvert(false);
-      toast.success(
-        `${r.creees} séance${r.creees > 1 ? 's' : ''} posée${r.creees > 1 ? 's' : ''}` +
-        (r.ignorees ? ` · ${r.ignorees} laissée${r.ignorees > 1 ? 's' : ''} en place` : '') +
-        (r.semaines.length ? ` · semaines ${r.semaines[0]}–${r.semaines[r.semaines.length - 1]}` : ''));
-    },
+    // On NE FERME PAS : le bilan s'affiche dans la fenêtre. Fermer puis
+    // résumer en un toast escamotait les refus — et « 0 séance créée sur
+    // 0 semaine » se lisait comme une panne.
+    onSuccess: (r) => { setBilan(r); rafraichir(); },
     onError: (e) => toast.error((e as Error).message),
   });
+
+  /** Ferme la fenêtre ET oublie le bilan : sans cela, la rouvrir montrait le
+   *  compte rendu de la fois précédente. */
+  const fermerDuplication = () => { setDupOuvert(false); setBilan(null); };
+
+  const reprendre = useMutation({
+    mutationFn: () => edtApi.reprendreSemaine(grille!.id, {
+      semaine_source: Number(repriseSemaine),
+      ecraser: repriseEcraser,
+    }),
+    // Même choix que la duplication : le bilan reste à l'écran. Il porte ici
+    // deux nombres qu'on ne peut pas escamoter — les annulées écartées et les
+    // permutations rendues à leur titulaire.
+    onSuccess: (r) => { setBilanReprise(r); rafraichir(); },
+    onError: (e) => toast.error((e as Error).message),
+  });
+
+  const fermerReprise = () => { setRepriseOuverte(false); setBilanReprise(null); };
 
   const nbSeances = Object.values(cases).filter(c => c.typeSeance).length;
 
@@ -517,6 +552,20 @@ export default function GrilleTypePage() {
    * Le calcul porte sur les groupes de l'ANNÉE, pas sur les onglets visibles :
    * un groupe doit garder le même libellé d'un écran à l'autre.
    */
+  // La semaine source s'ouvre sur celle qu'on regarde — c'est presque toujours
+  // celle qu'on vient de bâtir — sinon sur la première du semestre.
+  useEffect(() => {
+    if (dupSemaineSource || semainesCours.length === 0) return;
+    setDupSemaineSource(numeroSemaine || String(semainesCours[0].numero_semaine));
+  }, [dupSemaineSource, numeroSemaine, semainesCours]);
+
+  // Même règle pour la reprise : la semaine qu'on regarde est celle qu'on
+  // vient de bâtir, donc celle qu'on veut promouvoir.
+  useEffect(() => {
+    if (repriseSemaine || semainesCours.length === 0) return;
+    setRepriseSemaine(numeroSemaine || String(semainesCours[0].numero_semaine));
+  }, [repriseSemaine, numeroSemaine, semainesCours]);
+
   const libelles = useMemo(() => nommerLesGroupes(depts), [depts]);
   const nommer   = (d: Groupe) => libelles.get(d) ?? (d.nom || d.groupe || '');
 
@@ -689,6 +738,15 @@ export default function GrilleTypePage() {
             {!enModeSemaine && (
               <button onClick={() => setDupOuvert(true)} className={BTN_SECONDAIRE}>
                 <Copy size={14} /> Dupliquer sur les semaines
+              </button>
+            )}
+            {/* Le sens inverse, et il est sur l'écran du PATRON : c'est là
+                qu'on constate qu'il est vide, et là que le remplir sert.
+                Placé sur l'écran d'une semaine, il aurait demandé de deviner
+                vers quel patron on promeut. */}
+            {!enModeSemaine && (
+              <button onClick={() => setRepriseOuverte(true)} className={BTN_SECONDAIRE}>
+                <ArrowUpToLine size={14} /> Reprendre une semaine
               </button>
             )}
             <button onClick={() => enregistrer.mutate()}
@@ -1299,72 +1357,375 @@ export default function GrilleTypePage() {
         </div>
       )}
 
-      {/* Duplication */}
+      {/* Duplication — DEUX sources, une seule fenêtre.
+
+          Un second écran pour « recopier une semaine » aurait créé deux chemins
+          concurrents pour remplir un emploi du temps : ils auraient fini par se
+          contredire. On demande donc d'abord ce qu'on duplique.
+
+          Hauteur BORNÉE et défilement : sans cela, trois lignes de bilan
+          poussaient les boutons sous le bord de l'écran. La fenêtre ne se
+          fermait plus, et l'on croyait avoir perdu la validation. */}
       {dupOuvert && grille && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4
+                          max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between">
-              <h3 className="font-bold text-iss-dark">Dupliquer sur les semaines</h3>
-              <button onClick={() => setDupOuvert(false)}
+              <h3 className="font-bold text-iss-dark">
+                {bilan ? 'Duplication terminée' : 'Dupliquer sur les semaines'}
+              </h3>
+              <button onClick={fermerDuplication}
                 className="p-1.5 rounded-lg text-iss-gray hover:bg-gray-100 text-lg leading-none">×</button>
             </div>
-            <p className="text-xs text-iss-gray leading-relaxed">
-              Le patron est posé sur les semaines de <strong>cours</strong> — les
-              vacances, fériés et semaines d&apos;examens sont écartés. Une case
-              déjà occupée est <strong>laissée telle quelle</strong> : la
-              duplication n&apos;écrase jamais une modification faite sur une
-              semaine.
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-bold text-iss-gray uppercase mb-1">À partir de la semaine</label>
-                <input type="number" min={1} value={depuis}
-                  onChange={e => setDepuis(e.target.value)} className={SELECT} />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-iss-gray uppercase mb-1">Nombre de semaines</label>
-                <input type="number" min={1} value={nombre}
-                  onChange={e => setNombre(e.target.value)} className={SELECT} />
-              </div>
-            </div>
-            <label className="flex items-start gap-2 cursor-pointer">
-              <input type="checkbox" checked={ecraser} className="rounded mt-0.5"
-                onChange={e => setEcraser(e.target.checked)} />
-              <span className="text-sm text-iss-dark">
-                Rétablir le patron
-                {/* Dit en mots de tous les jours ce que fait `ecraser=True` :
-                    la case n'écrase QUE les séances d'origine « grille ».
-                    L'origine `manuelle` existe dans le modèle mais AUCUN écran
-                    ne la produit — la nommer ici ferait chercher un cas qui ne
-                    peut pas se présenter. Le seul travail réellement protégé
-                    aujourd'hui est le remplacement d'enseignant, posé par
-                    « Emploi de la semaine » avec l'origine `permutation`. */}
-                <span className="block text-xs text-iss-gray">
-                  Remet les séances telles qu&apos;elles sont dans le patron.
-                  Les remplacements d&apos;enseignant saisis sur une semaine
-                  sont conservés.
-                </span>
-              </span>
-            </label>
-            <div className="flex gap-3 pt-1">
-              <button onClick={() => setDupOuvert(false)}
-                className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-iss-gray hover:bg-gray-50">
-                Annuler
-              </button>
-              {/* Fond posé en STYLE, comme le bouton de recopie juste au-dessus.
-                  `bg-iss-primary` ne produit rien : la palette `iss` vit dans
-                  `tailwind.config.js`, que Tailwind v4 ne lit pas sans `@config`.
-                  Le bouton s'affichait donc en blanc sur blanc — invisible. */}
-              <button onClick={() => dupliquer.mutate()} disabled={dupliquer.isPending}
-                className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white
-                  disabled:opacity-50 hover:opacity-90"
-                style={{ background: DEGRADE }}>
-                {dupliquer.isPending ? 'Duplication…' : 'Dupliquer'}
-              </button>
-            </div>
+
+            {bilan ? (
+              <>
+                {/* Ce qui a RÉUSSI d'abord. La duplication est déjà enregistrée
+                    quand ce bilan s'affiche : une liste de refus présentée en
+                    tête donnerait à croire que tout a échoué. */}
+                <div className="rounded-xl border px-4 py-3 text-sm"
+                     style={{ borderColor: '#bbf7d0', background: '#f0fdf4', color: '#166534' }}>
+                  <strong>
+                    {bilan.creees} séance{bilan.creees > 1 ? 's' : ''} posée{bilan.creees > 1 ? 's' : ''}
+                    {bilan.remplacees > 0 && `, dont ${bilan.remplacees} remplacée${bilan.remplacees > 1 ? 's' : ''}`}
+                  </strong>
+                  {bilan.semaines.length > 0 && (
+                    <span className="block text-xs mt-0.5">
+                      Semaines {bilan.semaines.join(', ')}. C&apos;est enregistré.
+                    </span>
+                  )}
+                </div>
+
+                {(bilan.conflits ?? []).length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-bold text-iss-gray uppercase">
+                      {bilan.ignorees} case{bilan.ignorees > 1 ? 's' : ''} laissée{bilan.ignorees > 1 ? 's' : ''} en place
+                    </p>
+                    {/* Un motif par bloc, jamais répété : seize semaines bloquées
+                        pour la même raison donnaient seize lignes identiques. Le
+                        nombre dit l'ampleur, les exemples servent à lire. */}
+                    {(bilan.conflits ?? []).map(c => (
+                      <div key={c.motif}
+                           className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+                        <p className="text-xs text-amber-900 leading-relaxed">
+                          <strong>{c.nombre} case{c.nombre > 1 ? 's' : ''}</strong> — {c.motif}
+                        </p>
+                        <ul className="mt-1 text-[11px] text-amber-800">
+                          {c.exemples.map(e => <li key={e}>· {e}</li>)}
+                          {c.nombre > c.exemples.length && (
+                            <li className="italic">
+                              … et {c.nombre - c.exemples.length} autre{c.nombre - c.exemples.length > 1 ? 's' : ''}
+                            </li>
+                          )}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* « J'ai noté » faisait chercher une validation qui n'existe
+                    pas : tout est déjà écrit. */}
+                <button onClick={fermerDuplication}
+                  className="w-full py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90"
+                  style={{ background: DEGRADE }}>
+                  Fermer — les séances sont enregistrées
+                </button>
+              </>
+            ) : (
+              <>
+                <div>
+                  <label className="block text-xs font-bold text-iss-gray uppercase mb-1.5">
+                    Que duplique-t-on ?
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {([
+                      ['patron',  'Le patron',        'La grille type de ce groupe'],
+                      ['semaine', 'Une semaine',      'Une semaine déjà construite'],
+                    ] as const).map(([valeur, titre, sous]) => (
+                      <button key={valeur} type="button"
+                        onClick={() => setDupSource(valeur)}
+                        className={`text-left px-3 py-2 rounded-xl border transition-colors ${
+                          dupSource === valeur
+                            ? 'border-[#006633] bg-[#006633]/5'
+                            : 'border-gray-200 hover:border-[#006633]/40'}`}>
+                        <span className="block text-sm font-semibold text-iss-dark">{titre}</span>
+                        <span className="block text-[11px] text-iss-gray leading-tight">{sous}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {dupSource === 'semaine' ? (
+                  <>
+                    <div>
+                      <label className="block text-xs font-bold text-iss-gray uppercase mb-1">
+                        Semaine à recopier
+                      </label>
+                      <select value={dupSemaineSource} className={SELECT}
+                              disabled={semainesCours.length === 0}
+                              onChange={e => setDupSemaineSource(e.target.value)}>
+                        {semainesCours.length === 0 && <option value="">Aucune semaine</option>}
+                        {semainesCours.map(s => (
+                          <option key={s.numero_semaine} value={String(s.numero_semaine)}>
+                            Semaine {s.numero_semaine} — {jjmmaa(s.date_debut)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <p className="text-xs text-iss-gray leading-relaxed">
+                      Les séances de cette semaine sont recopiées telles quelles —
+                      élément, enseignant, salle, type. Ce qui ne vaut que pour
+                      elle ne suit pas : une annulation, un remplacement noté en
+                      observation. La semaine source n&apos;est jamais sa propre
+                      cible.
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-xs text-iss-gray leading-relaxed">
+                    Le patron est posé sur les semaines de <strong>cours</strong> — les
+                    vacances, fériés et semaines d&apos;examens sont écartés. Une case
+                    déjà occupée est <strong>laissée telle quelle</strong> : la
+                    duplication n&apos;écrase jamais une modification faite sur une
+                    semaine.
+                  </p>
+                )}
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-iss-gray uppercase mb-1">À partir de la semaine</label>
+                    <input type="number" min={1} value={depuis}
+                      onChange={e => setDepuis(e.target.value)} className={SELECT} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-iss-gray uppercase mb-1">Nombre de semaines</label>
+                    <input type="number" min={1} value={nombre}
+                      onChange={e => setNombre(e.target.value)} className={SELECT} />
+                  </div>
+                </div>
+
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input type="checkbox" checked={ecraser} className="rounded mt-0.5"
+                    onChange={e => setEcraser(e.target.checked)} />
+                  <span className="text-sm text-iss-dark">
+                    {dupSource === 'semaine' ? 'Remplacer ce qui a été dupliqué'
+                                             : 'Rétablir le patron'}
+                    {/* Ce que la case reprend : ce qu'une DUPLICATION a posé —
+                        patron ou recopie de semaine. Une saisie à la main et un
+                        remplacement d'enseignant survivent dans tous les cas. */}
+                    <span className="block text-xs text-iss-gray">
+                      Reprend les cases qu&apos;une duplication avait posées. Les
+                      séances ajoutées à la main et les remplacements
+                      d&apos;enseignant sont conservés.
+                    </span>
+                  </span>
+                </label>
+
+                <div className="flex gap-3 pt-1">
+                  <button onClick={fermerDuplication}
+                    className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-iss-gray hover:bg-gray-50">
+                    Annuler
+                  </button>
+                  {/* Fond posé en STYLE : `bg-iss-primary` ne produit rien — la
+                      palette `iss` vit dans `tailwind.config.js`, que Tailwind v4
+                      ne lit pas sans `@config`. Le bouton s'affichait en blanc
+                      sur blanc. */}
+                  <button onClick={() => dupliquer.mutate()}
+                    disabled={dupliquer.isPending
+                              || (dupSource === 'semaine' && !dupSemaineSource)}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white
+                      disabled:opacity-50 hover:opacity-90"
+                    style={{ background: DEGRADE }}>
+                    {dupliquer.isPending ? 'Duplication…' : 'Dupliquer'}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
+      {/* Reprendre une semaine — la promotion INVERSE.
+
+          Personne ne compose un patron à vide : on bâtit une semaine sur
+          l'écran hebdomadaire, où l'on voit ce qu'on fait, et le patron reste
+          vide. Ce qui le justifie pourtant, et c'est la seule raison : il
+          n'appartient à aucun semestre. Rempli une fois, il ressert l'année
+          suivante, là où une semaine meurt avec son année.
+
+          Fenêtre SÉPARÉE de celle de la duplication : les deux vont en sens
+          contraires, et les mêler aurait fait choisir un sens au milieu de
+          champs qui ne servent qu'à l'autre.
+
+          Hauteur bornée et défilement, comme la duplication : trois lignes de
+          bilan poussaient les boutons sous le bord de l'écran. */}
+      {repriseOuverte && grille && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4
+                          max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-iss-dark">
+                {bilanReprise ? 'Le patron est repris' : 'Reprendre une semaine'}
+              </h3>
+              <button onClick={fermerReprise}
+                className="p-1.5 rounded-lg text-iss-gray hover:bg-gray-100 text-lg leading-none">×</button>
+            </div>
+
+            {bilanReprise ? (
+              <>
+                {/* Ce qui a RÉUSSI d'abord : c'est déjà écrit quand ce bilan
+                    s'affiche. Des refus en tête donneraient à croire que tout
+                    a échoué. */}
+                <div className="rounded-xl border px-4 py-3 text-sm"
+                     style={{ borderColor: '#bbf7d0', background: '#f0fdf4', color: '#166534' }}>
+                  <strong>
+                    {bilanReprise.creees + bilanReprise.remplacees} case
+                    {bilanReprise.creees + bilanReprise.remplacees > 1 ? 's' : ''} au patron
+                    {bilanReprise.remplacees > 0
+                      && `, dont ${bilanReprise.remplacees} remplacée${bilanReprise.remplacees > 1 ? 's' : ''}`}
+                  </strong>
+                  <span className="block text-xs mt-0.5">
+                    D&apos;après la semaine {bilanReprise.semaine_source}. C&apos;est enregistré.
+                  </span>
+                </div>
+
+                {/* Les DEUX ÉCARTS, chiffrés. Sans eux, le patron ne reproduit
+                    pas la semaine qu'on avait sous les yeux, et la différence
+                    se découvre bien plus tard, sans explication. */}
+                {(bilanReprise.permutations_ramenees > 0
+                  || bilanReprise.annulees_ecartees > 0) && (
+                  <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2
+                                  text-[11px] text-blue-900 space-y-1">
+                    {bilanReprise.annulees_ecartees > 0 && (
+                      <p>
+                        <strong>
+                          {bilanReprise.annulees_ecartees} séance
+                          {bilanReprise.annulees_ecartees > 1 ? 's' : ''} annulée
+                          {bilanReprise.annulees_ecartees > 1 ? 's' : ''}
+                        </strong>{' '}
+                        — écartée{bilanReprise.annulees_ecartees > 1 ? 's' : ''} du
+                        patron : un cours annulé un jour précis ne dit rien du
+                        jour ordinaire.
+                      </p>
+                    )}
+                    {bilanReprise.permutations_ramenees > 0 && (
+                      <p>
+                        <strong>
+                          {bilanReprise.permutations_ramenees} remplacement
+                          {bilanReprise.permutations_ramenees > 1 ? 's' : ''}
+                        </strong>{' '}
+                        — rendu{bilanReprise.permutations_ramenees > 1 ? 's' : ''} à
+                        l&apos;enseignant titulaire : le patron garde le
+                        titulaire, pas l&apos;exception d&apos;une semaine.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {(bilanReprise.conflits ?? []).length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-bold text-iss-gray uppercase">
+                      {bilanReprise.ignorees} case{bilanReprise.ignorees > 1 ? 's' : ''} du
+                      patron laissée{bilanReprise.ignorees > 1 ? 's' : ''} en place
+                    </p>
+                    {(bilanReprise.conflits ?? []).map(c => (
+                      <div key={c.motif}
+                           className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+                        <p className="text-xs text-amber-900 leading-relaxed">
+                          <strong>{c.nombre} case{c.nombre > 1 ? 's' : ''}</strong> — {c.motif}
+                        </p>
+                        <ul className="mt-1 text-[11px] text-amber-800">
+                          {c.exemples.map(e => <li key={e}>· {e}</li>)}
+                          {c.nombre > c.exemples.length && (
+                            <li className="italic">
+                              … et {c.nombre - c.exemples.length} autre{c.nombre - c.exemples.length > 1 ? 's' : ''}
+                            </li>
+                          )}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <button onClick={fermerReprise}
+                  className="w-full py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90"
+                  style={{ background: DEGRADE }}>
+                  Fermer — le patron est enregistré
+                </button>
+              </>
+            ) : (
+              <>
+                <div>
+                  <label className="block text-xs font-bold text-iss-gray uppercase mb-1">
+                    Semaine à reprendre
+                  </label>
+                  <select value={repriseSemaine} className={SELECT}
+                          disabled={semainesCours.length === 0}
+                          onChange={e => setRepriseSemaine(e.target.value)}>
+                    {semainesCours.length === 0 && <option value="">Aucune semaine</option>}
+                    {semainesCours.map(s => (
+                      <option key={s.numero_semaine} value={String(s.numero_semaine)}>
+                        Semaine {s.numero_semaine} — {jjmmaa(s.date_debut)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <p className="text-xs text-iss-gray leading-relaxed">
+                  Cette semaine devient le <strong>patron</strong> de ce groupe.
+                  Le patron ne porte pas de date : c&apos;est ce qui lui permet
+                  de resservir l&apos;année suivante.
+                </p>
+
+                {/* Les deux écarts, ANNONCÉS AVANT de cliquer. Les découvrir
+                    dans le bilan, c'est les découvrir une fois écrits. */}
+                <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2
+                                text-[11px] text-blue-900 space-y-1">
+                  <p>
+                    Une séance <strong>annulée</strong> n&apos;entre pas : on
+                    reprend un emploi du temps, pas l&apos;histoire de ses
+                    accidents.
+                  </p>
+                  <p>
+                    Un <strong>remplacement d&apos;enseignant</strong> revient au
+                    titulaire — sinon le remplaçant le deviendrait pour toutes
+                    les années à venir.
+                  </p>
+                </div>
+
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input type="checkbox" checked={repriseEcraser} className="rounded mt-0.5"
+                    onChange={e => setRepriseEcraser(e.target.checked)} />
+                  <span className="text-sm text-iss-dark">
+                    Le patron suit la semaine
+                    <span className="block text-xs text-iss-gray">
+                      Sans cette case, une case déjà composée dans le patron reste
+                      telle quelle : on le complète sans défaire ce qu&apos;on y a
+                      réglé.
+                    </span>
+                  </span>
+                </label>
+
+                <div className="flex gap-3 pt-1">
+                  <button onClick={fermerReprise}
+                    className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-iss-gray hover:bg-gray-50">
+                    Annuler
+                  </button>
+                  {/* Fond en STYLE, pas en classe : `bg-iss-primary` ne produit
+                      aucune règle — la palette `iss` vit dans
+                      `tailwind.config.js`, que Tailwind v4 ne lit pas. */}
+                  <button onClick={() => reprendre.mutate()}
+                    disabled={reprendre.isPending || !repriseSemaine}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white
+                      disabled:opacity-50 hover:opacity-90"
+                    style={{ background: DEGRADE }}>
+                    {reprendre.isPending ? 'Reprise…' : 'Reprendre'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

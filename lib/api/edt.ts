@@ -72,7 +72,7 @@ export interface SeanceReelle {
   type_seance_fk:   number;
   type_libelle:     string;
   type_special:     boolean;
-  origine:          'grille' | 'manuelle' | 'permutation';
+  origine:          'grille' | 'manuelle' | 'permutation' | 'recopie';
   annulee:          boolean;
   observations:     string;
   /** Séances d'un même cours partagé. Nulle pour une séance ordinaire. */
@@ -175,8 +175,33 @@ export interface ResultatRecopie {
   detail?:        string;
 }
 
+/** Un refus, GROUPE par motif : seize semaines bloquees pour la meme raison
+ *  donnaient seize lignes identiques. Le nombre dit l'ampleur, les exemples
+ *  servent a lire. */
+export interface ConflitDuplication {
+  motif:    string;
+  nombre:   number;
+  exemples: string[];
+}
 export interface ResultatDuplication {
   creees: number; ignorees: number; remplacees: number; semaines: number[];
+  conflits?: ConflitDuplication[];
+  source?: 'patron' | 'semaine';
+  semaine_source?: number;
+}
+/** Le compte rendu d'une SEMAINE PROMUE EN PATRON — le sens inverse.
+ *
+ *  Deux ecarts assumes entre la semaine et le patron obtenu, et le bilan les
+ *  chiffre tous les deux : une seance annulee n'entre pas, une permutation
+ *  revient a son titulaire. Sans ces deux nombres, le patron ne reproduit pas
+ *  la semaine qu'on avait sous les yeux et la difference se decouvre bien plus
+ *  tard, sans explication. */
+export interface ResultatReprise {
+  creees: number; ignorees: number; remplacees: number;
+  conflits?: ConflitDuplication[];
+  permutations_ramenees: number;
+  annulees_ecartees:     number;
+  semaine_source:        number;
 }
 export interface ResultatProjection {
   seances: number; projetees: number; supprimees: number; departements: number[];
@@ -209,10 +234,35 @@ export const edtApi = {
       { method: 'POST', body }),
 
   /** Pose le patron sur des semaines. Sans `numeros` ni `depuis`, tout le semestre. */
+  /**
+   * Pose un emploi du temps sur des semaines, depuis DEUX sources possibles :
+   * le patron (`source: 'patron'`, defaut) ou une semaine deja batie
+   * (`source: 'semaine'` + `semaine_source`).
+   *
+   * Un seul endpoint pour les deux : deux chemins concurrents pour remplir un
+   * emploi du temps finiraient par se contredire.
+   */
   dupliquer: (id: number, body: {
     numeros?: number[]; depuis?: number; nombre?: number; ecraser?: boolean;
+    source?: 'patron' | 'semaine'; semaine_source?: number;
   }) => apiFetch<ResultatDuplication>(`${BASE}/grilles/${id}/dupliquer/`,
     { method: 'POST', body }),
+
+  /**
+   * Promeut une SEMAINE deja batie en patron — l'inverse de `dupliquer`.
+   *
+   * Personne ne compose un patron a vide : on batit une semaine sur l'ecran
+   * hebdomadaire, ou l'on voit ce qu'on fait. Ce qui justifie le patron, c'est
+   * qu'il n'appartient a aucun semestre : rempli une fois, il ressert l'annee
+   * suivante, la ou une semaine meurt avec son annee.
+   *
+   * `ecraser` ne commande pas la meme chose que dans `dupliquer`, et c'est
+   * normal : ici la cible est le patron. Sans lui, une case deja composee a la
+   * main dans le patron reste telle quelle.
+   */
+  reprendreSemaine: (id: number, body: { semaine_source: number; ecraser?: boolean }) =>
+    apiFetch<ResultatReprise>(`${BASE}/grilles/${id}/reprendre-semaine/`,
+      { method: 'POST', body }),
 
   // ── Cases du patron ──────────────────────────────────────────────────────
   creerSeanceType: (body: Partial<SeanceType>) =>
