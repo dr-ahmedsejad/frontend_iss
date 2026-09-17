@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Plus, Search, Edit2, Trash2, GraduationCap } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, GraduationCap, FileDown, Loader2 } from 'lucide-react';
+import { apiFetchBlob } from '@/lib/api';
+import { downloadBlob } from '@/lib/downloadBlob';
 import { useFilieresList, useFilieresMutations } from '@/lib/api/scolarite-hooks';
 import { canAccess } from '@/lib/auth';
 import { popFlash } from '@/lib/flash';
@@ -29,6 +31,9 @@ export default function FilieresPage() {
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('');
   const [toDelete, setToDelete] = useState<Filiere | null>(null);
+  /** La filière dont la maquette est en cours de génération : wkhtmltopdf
+   *  prend 5 à 10 s, sans indicateur on clique une seconde fois. */
+  const [enGeneration, setEnGeneration] = useState<number | null>(null);
 
   const canEdit = canAccess('scolarite_filieres', 'modifier');
   const canDel  = canAccess('scolarite_filieres', 'supprimer');
@@ -63,6 +68,26 @@ export default function FilieresPage() {
       onSuccess: () => { toast.success(`Filière "${target.intitule_fr}" supprimée`); setToDelete(null); },
       onError:   (e) => toast.error((e as Error).message),
     });
+  }
+
+  /**
+   * Télécharge la maquette en PDF.
+   *
+   * Par `apiFetchBlob` et non par un lien <a href> : un lien part sans le
+   * rafraîchissement du jeton, et une session expirée rendrait une page
+   * d'erreur à la place du fichier. Le motif d'un refus (« La filière X n'a
+   * encore aucun module… ») remonte tel quel dans le toast.
+   */
+  async function telechargerMaquette(f: Filiere) {
+    setEnGeneration(f.id);
+    try {
+      const blob = await apiFetchBlob(`/api/v1/scolarite/filieres/${f.id}/maquette/`);
+      downloadBlob(blob, `maquette_${f.code}.pdf`);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setEnGeneration(null);
+    }
   }
 
   const columns: Column<Filiere>[] = [
@@ -140,8 +165,23 @@ export default function FilieresPage() {
           emptyTitle="Aucune filière"
           emptyDesc="Commencez par ajouter une filière"
           onRowClick={r => router.push(`/dashboard/scolarite/filieres/${r.id}`)}
-          actions={canEdit || canDel ? (row) => (
+          // La colonne est TOUJOURS rendue : la maquette se télécharge dès
+          // qu'on voit la liste. Conditionnée à modifier/supprimer, elle
+          // cachait le bouton à ceux qui n'ont qu'à lire.
+          //
+          // Le clic ne rouvre pas la fiche : `DataTable` coupe la propagation
+          // sur la cellule des actions.
+          actions={(row) => (
             <>
+              <button onClick={() => telechargerMaquette(row)}
+                disabled={enGeneration !== null}
+                title="Télécharger la maquette (PDF)"
+                aria-label={`Télécharger la maquette de ${row.code}`}
+                className="p-1.5 rounded-lg text-iss-gray hover:text-iss-primary hover:bg-gray-50 transition-colors disabled:opacity-50">
+                {enGeneration === row.id
+                  ? <Loader2 size={15} className="animate-spin" />
+                  : <FileDown size={15} />}
+              </button>
               {canEdit && (
                 <Link href={`/dashboard/scolarite/filieres/${row.id}`}
                   className="p-1.5 rounded-lg text-iss-gray hover:text-iss-primary hover:bg-gray-50 transition-colors">
@@ -155,7 +195,7 @@ export default function FilieresPage() {
                 </button>
               )}
             </>
-          ) : undefined}
+          )}
         />
         {pages > 1 && (
           <div className="px-4 pb-4 border-t border-gray-100 pt-3">
