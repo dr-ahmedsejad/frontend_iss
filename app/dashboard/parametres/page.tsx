@@ -4,7 +4,7 @@ import Link from 'next/link';
 import {
   Settings, Calendar, BookOpen, DollarSign,
   Building, Layers, Clock, MapPin, ArrowRight,
-  Sun, CalendarDays, Moon, CalendarRange,
+  Sun, CalendarDays, Moon, CalendarRange, CalendarX2,
 } from 'lucide-react';
 
 const PARAM_SECTIONS = [
@@ -56,6 +56,13 @@ const PARAM_SECTIONS = [
     label: 'Semaines',
     desc: 'Générer et gérer les semaines',
     color: '#006633',
+  },
+  {
+    href: '/dashboard/parametres/jours-feries',
+    icon: CalendarX2,
+    label: 'Jours fériés',
+    desc: 'Fériés fixes et jours marqués du calendrier',
+    color: '#475569',
   },
   {
     href: '/dashboard/parametres/departements',

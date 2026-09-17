@@ -5,12 +5,14 @@ import Link from 'next/link';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, CalendarDays, Trash2, Edit3,
-  ChevronDown, Filter, CheckCircle, AlertCircle, Loader2, X,
+  ChevronDown, Filter, CheckCircle, AlertCircle, Loader2, X, CalendarX2,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { formatDate as fmt } from '@/lib/formatters';
 import { getStoredUser } from '@/lib/auth';
 import { ConfirmModal } from '@/components/ConfirmModal';
+import { useJourFerieMutations } from '@/lib/api/feries-hooks';
+import type { JourFerie } from '@/lib/api/feries';
 
 interface GroupedSemaine {
   numero_semaine:        number | null;
@@ -22,6 +24,11 @@ interface GroupedSemaine {
   annee_universitaire:   string;
   type_semestre:         string;
   ids:                   number[];
+  /** Les jours fériés ISOLÉS de la semaine — elle garde son numéro. */
+  jours_feries:          JourFerie[];
+  /** Ses jours, pour choisir celui qu'on marque. */
+  jours:                 { id: number; date: string; jour: string;
+                           type_semaine: string; libelle: string }[];
 }
 interface Year { id: number; annee: string; }
 
@@ -60,6 +67,28 @@ export default function SemainesPage() {
   const [editError, setEditError] = useState<string | null>(null);
 
   const [toDelete, setToDelete] = useState<GroupedSemaine | null>(null);
+
+  // Marquer UN jour férié : la semaine garde son numéro, rien n'est renuméroté.
+  const [aMarquer, setAMarquer]       = useState<GroupedSemaine | null>(null);
+  const [jourChoisi, setJourChoisi]   = useState('');
+  const [nomFerie, setNomFerie]       = useState('');
+  const [erreurFerie, setErreurFerie] = useState<string | null>(null);
+  const [aRetirer, setARetirer]       = useState<JourFerie | null>(null);
+  const { marquer, retirer } = useJourFerieMutations();
+
+  const ouvrirMarquage = (it: GroupedSemaine) => {
+    setAMarquer(it);
+    setJourChoisi(String(it.jours.find(j => j.type_semaine === 'cours')?.id ?? ''));
+    setNomFerie('');
+    setErreurFerie(null);
+  };
+  const soumettreMarquage = () => {
+    if (!jourChoisi) return;
+    marquer.mutate({ id: Number(jourChoisi), libelle: nomFerie.trim() }, {
+      onSuccess: (r) => { setAMarquer(null); showToast('ok', r.message); },
+      onError:   (e) => setErreurFerie(e instanceof Error ? e.message : 'Erreur'),
+    });
+  };
   const [toast,    setToast]    = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
 
   const showToast = (type: 'ok' | 'err', msg: string) => {
@@ -114,6 +143,10 @@ export default function SemainesPage() {
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['parametres', 'semaines'] });
       qc.invalidateQueries({ queryKey: ['suivi'] });
+      // Remettre une semaine en cours rétablit les séances qu'un férié avait
+      // annulées : la grille doit les relire.
+      qc.invalidateQueries({ queryKey: ['edt'] });
+      qc.invalidateQueries({ queryKey: ['feries'] });
       setToEdit(null);
       setEditError(null);
       if (res.changed) {
@@ -321,6 +354,22 @@ export default function SemainesPage() {
                       </td>
                       <td className="font-semibold text-iss-dark text-sm">
                         {fmt(it.date_debut)} <span className="text-iss-gray font-normal">→</span> {fmt(it.date_fin)}
+                        {(it.jours_feries ?? []).length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {it.jours_feries.map(f => (
+                              <span key={f.id}
+                                className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-full text-[11px] font-semibold"
+                                style={{ background: '#47556914', color: '#334155' }}>
+                                Férié · {f.jour} {fmt(f.date)}{f.libelle ? ` — ${f.libelle}` : ''}
+                                <button onClick={() => setARetirer(f)}
+                                  title="Rendre ce jour aux cours"
+                                  className="p-0.5 rounded-full hover:bg-white">
+                                  <X size={11} />
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </td>
                       <td>
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
@@ -341,6 +390,14 @@ export default function SemainesPage() {
                       </td>
                       <td>
                         <div className="flex items-center gap-1">
+                          {it.numero_semaine !== null
+                            && it.jours.some(j => j.type_semaine === 'cours') && (
+                            <button onClick={() => ouvrirMarquage(it)}
+                              title="Marquer un jour férié"
+                              className="p-1.5 rounded-lg text-iss-gray hover:text-slate-700 hover:bg-slate-100 transition-all">
+                              <CalendarX2 size={13} />
+                            </button>
+                          )}
                           <button onClick={() => openEdit(it)}
                             title="Modifier le type"
                             className="p-1.5 rounded-lg text-iss-gray hover:text-iss-primary hover:bg-green-50 transition-all">
@@ -393,6 +450,18 @@ export default function SemainesPage() {
               <p className="mt-1.5 text-[11px] text-iss-gray">
                 Marquer comme férié/vacances/examen retire la semaine de la séquence pédagogique et renumérote automatiquement les suivantes.
               </p>
+              {toEdit.numero_semaine !== null && (
+                <div className="mt-2 rounded-xl border px-3 py-2 text-[11px] leading-relaxed"
+                     style={{ borderColor: '#cbd5e1', background: '#f8fafc', color: '#334155' }}>
+                  <strong>Un seul jour férié</strong> (ex. 28 novembre) ? Ne fermez pas la
+                  semaine :{' '}
+                  <button type="button" className="font-semibold underline"
+                    onClick={() => { const it = toEdit; closeEdit(); ouvrirMarquage(it); }}>
+                    marquez le jour
+                  </button>
+                  . La semaine garde son numéro et rien n&apos;est renuméroté.
+                </div>
+              )}
             </div>
 
             <div>
@@ -428,6 +497,75 @@ export default function SemainesPage() {
           </div>
         </div>
       )}
+
+      {/* Marquer un jour férié */}
+      {aMarquer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40"
+          onClick={() => setAMarquer(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4"
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-iss-dark">Marquer un jour férié</h3>
+              <button onClick={() => setAMarquer(null)} className="p-1.5 rounded-lg text-iss-gray hover:bg-gray-100">
+                <X size={16} />
+              </button>
+            </div>
+            <p className="text-xs text-iss-gray leading-relaxed">
+              Semaine S{aMarquer.numero_semaine} — {fmt(aMarquer.date_debut)} → {fmt(aMarquer.date_fin)}.
+              Le jour garde le numéro de sa semaine. Ses séances sont annulées, ni
+              pointées ni payées, et reviennent si le férié est retiré.
+            </p>
+            <div>
+              <label className="block text-xs font-semibold text-iss-dark mb-1.5">Jour</label>
+              <select value={jourChoisi} onChange={e => setJourChoisi(e.target.value)} className={INPUT}>
+                {aMarquer.jours.filter(j => j.type_semaine === 'cours').map(j => (
+                  <option key={j.id} value={j.id}>{j.jour} {fmt(j.date)}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-iss-dark mb-1.5">Nom du férié</label>
+              <input value={nomFerie} onChange={e => setNomFerie(e.target.value)} maxLength={200}
+                placeholder="ex : Aïd el-Fitr" className={INPUT} autoFocus />
+            </div>
+            {erreurFerie && (
+              <div className="flex items-start gap-2 p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-800">
+                <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                <span>{erreurFerie}</span>
+              </div>
+            )}
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => setAMarquer(null)}
+                className="px-4 py-2 rounded-xl text-sm font-medium border border-gray-200 text-iss-gray hover:bg-gray-50 transition-colors">
+                Annuler
+              </button>
+              <button onClick={soumettreMarquage}
+                disabled={marquer.isPending || !jourChoisi || !nomFerie.trim()}
+                className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-bold text-white hover:opacity-90 transition-all disabled:opacity-60"
+                style={{ background: 'linear-gradient(135deg,#475569,#64748b)' }}>
+                {marquer.isPending && <Loader2 size={13} className="animate-spin" />}
+                Marquer férié
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <ConfirmModal
+        open={aRetirer !== null}
+        title="Rendre ce jour aux cours ?"
+        message={aRetirer
+          ? `${aRetirer.jour} ${fmt(aRetirer.date)}${aRetirer.libelle ? ` (${aRetirer.libelle})` : ''} redevient un jour de cours. Les séances annulées par ce férié sont rétablies ; une séance annulée à la main reste annulée.`
+          : ''}
+        confirmLabel="Rendre aux cours"
+        variant="warning"
+        loading={retirer.isPending}
+        onConfirm={() => aRetirer && retirer.mutate(aRetirer.id, {
+          onSuccess: (r) => { setARetirer(null); showToast('ok', r.message); },
+          onError:   (e) => { setARetirer(null); showToast('err', e instanceof Error ? e.message : 'Erreur'); },
+        })}
+        onCancel={() => setARetirer(null)}
+      />
 
       {/* Confirm Delete */}
       <ConfirmModal

@@ -7,7 +7,7 @@ import {
   GraduationCap, UserCheck, FileBadge, BellRing, Globe, Scale,
   LayoutDashboard, AlertCircle, ClipboardCheck, Edit3,
   BookMarked, ArrowUpCircle, MessageSquareWarning, History,
-  Briefcase, Shield, Database, ShieldCheck,
+  Briefcase, Shield, Database, ShieldCheck, CalendarX2,
 } from 'lucide-react';
 import type { UserRole, RbacAction } from '@/lib/auth';
 import {
@@ -255,6 +255,15 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: '/dashboard/parametres/semaines',         label: 'Liste des semaines' },
       { href: '/dashboard/parametres/semaines/ajouter', label: 'Ajouter semaine' },
       { href: '/dashboard/parametres/semaines/generer', label: 'Générer les semaines' },
+    ],
+  },
+  // Une entrée à part, et non une section de la page Semaines : cachée là, on
+  // ne la trouvait pas.
+  {
+    key: 'jours-feries', icon: CalendarX2, label: 'Jours fériés',
+    roles: ADMIN_ONLY,
+    items: [
+      { href: '/dashboard/parametres/jours-feries', label: 'Fériés et jours marqués' },
     ],
   },
   {

@@ -157,7 +157,10 @@ export default function GrilleTypePage() {
   const lignesJourQ = useQuery({
     queryKey: ['edt', 'grille', 'lignes-jour', annee, typeSem, numeroSemaine] as const,
     enabled:  enModeSemaine,
-    queryFn:  () => apiFetch<{ results: { id: number; jour_fk: number }[] }>(
+    queryFn:  () => apiFetch<{ results: {
+      id: number; jour_fk: number; date: string; jour: string;
+      type_semaine: string; description: string; numero_semaine: number | null;
+    }[] }>(
       `/api/v1/parametres/semaines/?annee_universitaire=${encodeURIComponent(annee)}`
       + `&type_semestre=${encodeURIComponent(typeSem)}`
       + `&numero_semaine=${encodeURIComponent(numeroSemaine)}&page_size=50`),
@@ -166,9 +169,26 @@ export default function GrilleTypePage() {
   /** jour_fk → id de la ligne `Semaine` de ce jour, pour la semaine choisie. */
   const ligneJour = useMemo(() => {
     const m: Record<number, number> = {};
-    for (const l of lignesJourQ.data?.results ?? []) m[l.jour_fk] = l.id;
+    for (const l of lignesJourQ.data?.results ?? []) {
+      // Un jour FÉRIÉ n'offre pas de case où poser une séance : le serveur
+      // refuserait l'ajout. Sans ligne-jour, la case vide reste figée.
+      if (l.type_semaine === 'cours') m[l.jour_fk] = l.id;
+    }
     return m;
   }, [lignesJourQ.data]);
+  /** jour_fk → le jour férié ISOLÉ de la semaine choisie (il garde son numéro). */
+  const feries = useMemo(() => {
+    const m: Record<number, { libelle: string; date: string; jour: string }> = {};
+    for (const l of lignesJourQ.data?.results ?? []) {
+      if (l.type_semaine === 'ferie' && l.numero_semaine != null) {
+        m[l.jour_fk] = { libelle: l.description, date: l.date, jour: l.jour };
+      }
+    }
+    return m;
+  }, [lignesJourQ.data]);
+  const listeFeries = useMemo(
+    () => Object.values(feries).sort((a, b) => a.date.localeCompare(b.date)),
+    [feries]);
 
   // Les séances de la semaine sur TOUS mes groupes — pas seulement celui
   // affiché. Une permutation échange G1 et G2 au même créneau : la candidate
@@ -964,6 +984,26 @@ export default function GrilleTypePage() {
             </p>
           </div>
 
+          {/* Les jours fériés de la semaine, nommés. Leurs séances sont
+              annulées, pas supprimées : elles reviennent si le férié est
+              retiré dans Paramètres → Jours fériés. */}
+          {enModeSemaine && listeFeries.length > 0 && (
+            <div className="mb-3 rounded-2xl border px-4 py-2.5 text-xs"
+                 style={{ borderColor: '#e2e8f0', background: '#f8fafc', color: '#334155' }}>
+              <strong>
+                {listeFeries.length === 1 ? 'Jour férié cette semaine' : 'Jours fériés cette semaine'}
+              </strong>{' '}—{' '}
+              {listeFeries.map((f, i) => (
+                <span key={f.date}>
+                  {i > 0 && ' · '}
+                  {f.jour} {jjmmaa(f.date)}{f.libelle ? ` (${f.libelle})` : ''}
+                </span>
+              ))}
+              . Pas de cours : les séances de ce jour sont annulées et ne
+              sont ni pointées ni payées.
+            </div>
+          )}
+
           <div className={`${CARTE} overflow-hidden`}>
             <div style={{ overflowX: 'auto' }}>
               <table style={STYLE_TABLE}>
@@ -976,9 +1016,35 @@ export default function GrilleTypePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {jours.map((j, ligne) => (
-                    <tr key={j.id} style={{ background: ligne % 2 === 0 ? 'white' : '#fafafa' }}>
-                      <td style={STYLE_CELLULE_JOUR}>{j.jour}</td>
+                  {jours.map((j, ligne) => {
+                    const ferie = enModeSemaine ? feries[j.id] : undefined;
+                    return (
+                    <tr key={j.id} style={{ background: ferie ? '#f1f5f9'
+                                                  : ligne % 2 === 0 ? 'white' : '#fafafa' }}>
+                      <td style={ferie ? { ...STYLE_CELLULE_JOUR, background: '#e2e8f0' }
+                                       : STYLE_CELLULE_JOUR}>
+                        {j.jour}
+                        {ferie && (
+                          <>
+                            <span className="block mx-auto mt-1 w-fit px-1.5 py-0.5 rounded"
+                                  style={{ fontSize: 9, letterSpacing: '0.06em',
+                                           background: '#475569', color: 'white' }}>
+                              FÉRIÉ
+                            </span>
+                            {/* L'en-tête de ligne est en `nowrap` : sans borne ni
+                                retour à la ligne, un nom long débordait sur la
+                                première case. */}
+                            {ferie.libelle && (
+                              <span className="block mx-auto mt-0.5"
+                                    style={{ maxWidth: 90, whiteSpace: 'normal',
+                                             fontSize: 10, fontWeight: 600,
+                                             lineHeight: 1.2, color: '#475569' }}>
+                                {ferie.libelle}
+                              </span>
+                            )}
+                          </>
+                        )}
+                      </td>
                       {creneaux.map(c => {
                         const k = cle(j.id, c.id);
                         const cellule = cases[k] ?? VIDE;
@@ -1036,7 +1102,10 @@ export default function GrilleTypePage() {
                         // ligne-jour du calendrier est connue — sans elle, la
                         // séance n'aurait aucune date où se poser.
                         const jourId = Number(k.split('__')[0]);
-                        const fige = aLui
+                        // Un jour férié fige tout : une séance annulée par le
+                        // férié doit revenir telle quelle au retrait, et le
+                        // serveur refuse de la modifier.
+                        const fige = aLui || !!ferie
                           || (enModeSemaine && !reelle && ligneJour[jourId] == null);
 
                         return (
@@ -1055,7 +1124,24 @@ export default function GrilleTypePage() {
                                 ne l'assure. Proposer ces champs inviterait à
                                 compter des heures, donc une vacation, pour un
                                 cours non donné. */}
-                            {ferme && (
+                            {/* Case VIDE un jour férié : un bloc rayé à la
+                                place des champs. Des champs grisés vides se
+                                lisaient comme une saisie en panne. */}
+                            {ferie && !reelle && (
+                              <div title={`${ferie.jour} ${jjmmaa(ferie.date)} est férié`
+                                          + `${ferie.libelle ? ` (${ferie.libelle})` : ''} : pas de cours.`}
+                                   style={{
+                                     height: '100%', minHeight: 60, display: 'flex',
+                                     alignItems: 'center', justifyContent: 'center',
+                                     borderRadius: 8, cursor: 'not-allowed',
+                                     background: 'repeating-linear-gradient(135deg, #e2e8f0 0 6px, #f1f5f9 6px 12px)',
+                                     color: '#475569', fontSize: 11, fontWeight: 700,
+                                     letterSpacing: '0.04em',
+                                   }}>
+                                Férié
+                              </div>
+                            )}
+                            {ferme && !(ferie && !reelle) && (
                               <div title={[
                                      'Vos étudiants ont cours ailleurs à cette heure.',
                                      ...bloqueurs.map(o =>
@@ -1082,7 +1168,7 @@ export default function GrilleTypePage() {
                               </div>
                             )}
 
-                            {!ferme && !speciale && (
+                            {!ferme && !speciale && !(ferie && !reelle) && (
                               <div title={aLui ? bulleCollegue : infobulle(
                                             pris.profs[k], optProfs, cellule.profId)}>
                                 <AC value={cellule.profId} placeholder="Professeur"
@@ -1092,7 +1178,7 @@ export default function GrilleTypePage() {
                                     onChange={v => majCase(k, 'profId', v)} />
                               </div>
                             )}
-                            {!ferme && !speciale && (
+                            {!ferme && !speciale && !(ferie && !reelle) && (
                               <div title={aLui ? bulleCollegue : undefined}>
                                 <AC value={cellule.emId}
                                     options={aLui ? optEmsLecture : optEms}
@@ -1100,14 +1186,14 @@ export default function GrilleTypePage() {
                                     onChange={v => majCase(k, 'emId', v)} />
                               </div>
                             )}
-                            {!ferme && (
+                            {!ferme && !(ferie && !reelle) && (
                               <div title={aLui ? bulleCollegue : undefined}>
                                 <AC value={cellule.typeSeance} options={optTypes}
                                     placeholder="Type séance" disabled={fige}
                                     onChange={v => majCase(k, 'typeSeance', v)} />
                               </div>
                             )}
-                            {!ferme && !speciale && (
+                            {!ferme && !speciale && !(ferie && !reelle) && (
                               <div title={aLui ? bulleCollegue : infobulle(
                                             pris.salles[k], optSalles, cellule.salleId)}>
                                 <AC value={cellule.salleId} placeholder="Salle"
@@ -1131,7 +1217,15 @@ export default function GrilleTypePage() {
                                 ce qui ouvre ou recopie, à droite, derrière un
                                 trait, ce qui détruit — « Vider » ne jouxte
                                 jamais un bouton qu'on vise souvent. */}
-                            {(() => {
+                            {ferie && reelle && (
+                              <div className="mt-1 pt-1 border-t border-gray-200/70"
+                                   title="Séance annulée par le jour férié. Elle sera rétablie telle quelle si le férié est retiré."
+                                   style={{ fontSize: 9, fontWeight: 700, color: '#b91c1c',
+                                            letterSpacing: '0.04em' }}>
+                                ANNULÉE — FÉRIÉ
+                              </div>
+                            )}
+                            {!ferie && (() => {
                               const videable  = !ferme && !aLui && remplie;
                               const recopiable = !enModeSemaine && freres.length > 1
                                 && !!cellule.idOrigine && cellule.modifiable && !modifie;
@@ -1227,7 +1321,8 @@ export default function GrilleTypePage() {
                         );
                       })}
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
