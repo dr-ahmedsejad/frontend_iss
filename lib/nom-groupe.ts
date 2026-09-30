@@ -30,6 +30,8 @@
  */
 
 export interface GroupeNommable {
+  /** Identifiant en base. Dernier recours pour séparer deux homonymes. */
+  id?:           number | string | null;
   nom:           string;
   groupe?:       string | null;
   /** Identifiant de la filière. `null` / absent = groupe sans filière. */
@@ -91,16 +93,40 @@ function etiquette(d: GroupeNommable, avecNiveau: boolean): string {
 export function nommerLesGroupes<T extends GroupeNommable>(depts: T[]): Map<T, string> {
   const simple = depts.map(d => [d, etiquette(d, false)] as const);
 
+  // 2ᵉ passe : l'année d'étude, sur les seuls libellés qu'un autre porte déjà.
+  const compte = compter(simple);
+  const precis = simple.map(([d, e]) =>
+    (compte.get(e.toLowerCase()) ?? 1) <= 1
+      ? [d, e] as const
+      : [d, etiquette(d, true)] as const);
+
+  // 3ᵉ passe : l'IDENTIFIANT, quand deux groupes sont STRICTEMENT homonymes —
+  // même filière, même année d'étude, même nom. L'année d'étude ne les sépare
+  // pas, et ils recevaient donc le même libellé : deux onglets identiques côte
+  // à côte, dont on croyait n'en voir qu'un. Relevé en production le
+  // 30/09/2026 — #51 et #55 étaient tous deux « LPSEA L2 - G1 », l'un vide,
+  // l'autre avec 24 étudiants ; on ouvrait le vide et l'on concluait que le
+  // groupe manquait.
+  //
+  // L'identifiant est laid, et c'est voulu : il ne paraît que là où deux
+  // groupes sont indiscernables, et c'est exactement ce qu'il faut dire. Sans
+  // identifiant, on n'invente rien — mieux vaut un doublon visible qu'un
+  // « #undefined ».
+  const restant = compter(precis);
+  return new Map(precis.map(([d, e]) =>
+    (restant.get(e.toLowerCase()) ?? 1) <= 1 || d.id == null
+      ? [d, e]
+      : [d, `${e} #${d.id}`]));
+}
+
+/** Combien de groupes portent chaque libellé. Les vides ne comptent pas. */
+function compter(paires: ReadonlyArray<readonly [GroupeNommable, string]>): Map<string, number> {
   const compte = new Map<string, number>();
-  for (const [, e] of simple) {
+  for (const [, e] of paires) {
     const cle = e.toLowerCase();
     if (cle) compte.set(cle, (compte.get(cle) ?? 0) + 1);
   }
-
-  return new Map(simple.map(([d, e]) =>
-    (compte.get(e.toLowerCase()) ?? 1) <= 1
-      ? [d, e]
-      : [d, etiquette(d, true)]));
+  return compte;
 }
 
 /**

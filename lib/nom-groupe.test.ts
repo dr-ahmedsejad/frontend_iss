@@ -13,8 +13,9 @@ import { libelleComplet, nommerLesGroupes, nomDuGroupe,
 
 const g = (nom: string,
            filiere_code: string | null = null,
-           niveau_nom: string | null = null): GroupeNommable =>
-  ({ nom, groupe: '', filiere_code, niveau_nom });
+           niveau_nom: string | null = null,
+           id: number | null = null): GroupeNommable =>
+  ({ id, nom, groupe: '', filiere_code, niveau_nom });
 
 const nommer = (liste: GroupeNommable[]) => {
   const noms = nommerLesGroupes(liste);
@@ -116,4 +117,42 @@ test('libelleComplet omet simplement un segment absent', () => {
   assert.equal(libelleComplet(g('HE')),              'HE');
   assert.equal(libelleComplet(g('HE', null, 'L1')),  'L1 - HE');
   assert.equal(libelleComplet(g('G2', 'STAT')),      'STAT - G2');
+});
+
+// ── Deux groupes STRICTEMENT homonymes ──────────────────────────────────────
+// Relevé en production le 30/09/2026 : #51 et #55 étaient tous deux
+// « LPSEA L2 - G1 » — même filière, même année, même nom. L'un portait
+// 24 étudiants, l'autre aucun ; deux onglets identiques côte à côte, et l'on
+// ouvrait le vide en concluant que le groupe manquait.
+
+test('deux homonymes que l’année ne sépare pas reçoivent leur identifiant', () => {
+  assert.deepEqual(
+    nommer([g('G1', 'LPSEA', 'L2', 51), g('G1', 'LPSEA', 'L2', 55)]),
+    ['LPSEA L2 - G1 #51', 'LPSEA L2 - G1 #55'],
+  );
+});
+
+test('l’identifiant ne paraît QUE là où l’année ne tranche pas', () => {
+  // Les deux premiers sont séparés par leur année d'étude : pas d'identifiant.
+  // Les deux suivants ne le sont pas : ils le reçoivent.
+  assert.deepEqual(
+    nommer([g('G1', 'LPSEA', 'L2', 51), g('G1', 'LPSEA', 'L3', 52),
+            g('G2', 'STAT', 'L1', 45), g('G2', 'STAT', 'L1', 58)]),
+    ['LPSEA L2 - G1', 'LPSEA L3 - G1', 'STAT L1 - G2 #45', 'STAT L1 - G2 #58'],
+  );
+});
+
+test('un groupe seul de son nom ne gagne jamais d’identifiant', () => {
+  assert.deepEqual(
+    nommer([g('G1', 'LPSEA', 'L2', 51), g('G2', 'LPSEA', 'L2', 56)]),
+    ['LPSEA - G1', 'LPSEA - G2'],
+  );
+});
+
+test('sans identifiant, on n’invente rien', () => {
+  // Mieux vaut un doublon visible qu'un libellé « #undefined ».
+  assert.deepEqual(
+    nommer([g('G1', 'LPSEA', 'L2'), g('G1', 'LPSEA', 'L2')]),
+    ['LPSEA L2 - G1', 'LPSEA L2 - G1'],
+  );
 });
