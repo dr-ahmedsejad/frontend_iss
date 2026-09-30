@@ -119,12 +119,22 @@ export function useReferentielsEDT() {
  * « Paramètres → Permissions EDT ». Mis en cache, un groupe fraîchement
  * délégué n'apparaissait pas avant plusieurs minutes, et l'on cherchait la
  * panne dans la délégation alors qu'elle était déjà faite.
+ *
+ * `avec_etudiants=1` écarte les groupes SANS ÉTUDIANT : on ne construit pas
+ * l'emploi du temps d'une promotion qui n'existe pas encore, et les proposer
+ * fait remplir le vide. Le serveur garde toutefois ceux qui portent déjà des
+ * séances ou un patron, même vides — sinon un emploi du temps déjà posé
+ * deviendrait inatteignable alors qu'il alimente encore le suivi et les
+ * vacations.
+ *
+ * Le paramètre est un OPT-IN : les écrans hors EDT — admissions, statistiques,
+ * paramètres — lisent le même endpoint et gardent la liste entière.
  */
 export function useGroupesEDT(annee?: string) {
   return useQuery({
     queryKey: ['edt', 'ref', 'groupes', annee ?? ''] as const,
     queryFn:  () => apiFetch<Groupe[]>(
-      `/api/v1/departements/all/?edt_scope=1${
+      `/api/v1/departements/all/?edt_scope=1&avec_etudiants=1${
         annee ? `&annee_universitaire=${encodeURIComponent(annee)}` : ''}`)
       .catch(() => [] as Groupe[]),
     staleTime: 0,
