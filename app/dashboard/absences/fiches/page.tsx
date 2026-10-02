@@ -42,6 +42,9 @@ interface EtudiantDette extends Etudiant { groupe: string; }
 /** La liste d'appel d'une séance, telle que le serveur la calcule.
  *  Même source que le PDF — voir `apps/absence/liste_appel.py`. */
 interface ListeAppel {
+  /** « L1 G1 » et non « G1 » — calculé côté serveur, le PDF lit le même. */
+  groupe_libelle:      string;
+  filiere:             string;
   source:              'inscriptions' | 'groupe';
   etudiants:           Etudiant[];
   dettes:              EtudiantDette[];
@@ -73,6 +76,9 @@ interface FicheGroup {
   /** Les inscriptions à cet élément n'ont pas été saisies : liste du groupe. */
   nonVerifiee: boolean;
   depNom:     string;
+  /** Le titre de la fiche : filière, puis groupe AVEC son niveau. */
+  libelle:    string;
+  filiere:    string;
 }
 
 const JOURS_ORDER: Record<string, number> = {
@@ -213,8 +219,8 @@ export default function FichesPresencePage() {
         seen.add(key);
 
         const depId = s.departement ?? null;
-        let liste: ListeAppel = { source: 'groupe', etudiants: [], dettes: [],
-                                  liste_non_verifiee: true };
+        let liste: ListeAppel = { groupe_libelle: '', filiere: '', source: 'groupe',
+                                  etudiants: [], dettes: [], liste_non_verifiee: true };
         if (depId) {
           const cle = `${depId}|${s.em ?? ''}`;
           if (listes.has(cle)) {
@@ -237,6 +243,8 @@ export default function FichesPresencePage() {
           dettes:      liste.dettes,
           nonVerifiee: liste.liste_non_verifiee,
           depNom:      departements.find(d => d.id === depId)?.nom ?? s.dept_nom ?? '—',
+          libelle:     liste.groupe_libelle,
+          filiere:     liste.filiere,
         });
       }
 
@@ -401,7 +409,13 @@ export default function FichesPresencePage() {
                   {/* Titre — miroir du PDF */}
                   <div className="px-5 py-3 border-b border-gray-100 text-center"
                     style={{ background: 'rgba(0,102,51,0.04)' }}>
-                    <p className="text-sm font-bold text-iss-dark">Fiche de Présence — {fiche.depNom}</p>
+                    {/* Même titre que le PDF. « G1 » seul ne disait pas quelle
+                        promotion : trois groupes portent ce nom cette année. */}
+                    <p className="text-sm font-bold text-iss-dark">
+                      Fiche de Présence
+                      {fiche.filiere && ` — ${fiche.filiere}`}
+                      {' — '}{fiche.libelle || fiche.depNom}
+                    </p>
                   </div>
 
                   {/* Informations de la séance — mêmes champs que le PDF */}
