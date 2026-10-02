@@ -4,6 +4,26 @@ import type { NextConfig } from 'next';
 // Lu depuis NEXT_PUBLIC_API_URL — fallback localhost en dev.
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
+// ── Le PLACEHOLDER des déploiements mutualisés ──
+// Sur un serveur partagé, l'image est bâtie avec
+// `NEXT_PUBLIC_API_URL=http://__SIGA_API_HOST__`, et Nginx réécrit ce
+// placeholder au vol selon l'hôte d'arrivée (`$scheme://$http_host`) — une
+// seule image sert ainsi plusieurs origines.
+//
+// Mais `sub_filter` ne réécrit que le CORPS des réponses, JAMAIS les EN-TÊTES.
+// Le placeholder restait donc tel quel dans la CSP servie au navigateur :
+// `connect-src 'self' http://__SIGA_API_HOST__` — une origine qui n'existe
+// pas. Relevé sur le VPS le 01/10/2026.
+//
+// Sans conséquence tant que l'API est servie par le même Nginx, donc en MÊME
+// origine, que `'self'` couvre déjà. Mais une directive qui nomme une origine
+// imaginaire ne protège rien et égare qui la lit — et le jour où l'API serait
+// appelée ailleurs, la CSP bloquerait sans dire pourquoi.
+//
+// On l'écarte donc : dans ce montage, `'self'` est la bonne réponse.
+const API_EST_PLACEHOLDER = API_URL.includes('__SIGA_API_HOST__');
+const ORIGINE_API: string[] = API_EST_PLACEHOLDER ? [] : [API_URL];
+
 const isDev = process.env.NODE_ENV !== 'production';
 
 // ── Content-Security-Policy ──
@@ -15,10 +35,10 @@ const cspDirectives: Record<string, string[]> = {
   'default-src':  ["'self'"],
   'script-src':   ["'self'", "'unsafe-inline'", ...(isDev ? ["'unsafe-eval'"] : [])],
   'style-src':    ["'self'", "'unsafe-inline'"],
-  'img-src':      ["'self'", 'data:', 'blob:', API_URL],
+  'img-src':      ["'self'", 'data:', 'blob:', ...ORIGINE_API],
   // Cairo est self-host par next/font/google (woff2 servi depuis 'self')
   'font-src':     ["'self'", 'data:'],
-  'connect-src':  ["'self'", API_URL, ...(isDev ? ['ws:', 'wss:'] : [])],
+  'connect-src':  ["'self'", ...ORIGINE_API, ...(isDev ? ['ws:', 'wss:'] : [])],
   'frame-src':    ["'none'"],
   'frame-ancestors': ["'none'"],   // anti-clickjacking
   'base-uri':     ["'self'"],
@@ -49,6 +69,7 @@ const nextConfig: NextConfig = {
   // l'accès LAN (ex. test multi-postes via http://<ip>:3001), on dérive l'hôte de
   // NEXT_PUBLIC_API_URL (localhost est déjà autorisé par défaut). Sans effet en prod.
   allowedDevOrigins: (() => {
+    if (API_EST_PLACEHOLDER) return [];
     try {
       const host = new URL(API_URL).hostname;
       return host && host !== 'localhost' && host !== '127.0.0.1' ? [host] : [];
