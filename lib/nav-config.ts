@@ -57,17 +57,20 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: '/dashboard/statistiques/repartition-charges',  label: 'Répartition des charges' },
     ],
   },
-  {
-    key: 'emplois', icon: Calendar, label: 'Emplois du temps',
-    roles: ALL, module: 'emplois',
-    items: [
-      { href: '/dashboard/emplois/gerer',    label: 'Gérer emplois',  action: 'modifier' },
-      { href: '/dashboard/emplois/importer', label: 'Importer EDT (depuis suivi)', action: 'modifier' },
-      { href: '/dashboard/emplois/filiere',  label: 'Emplois filière' },
-      { href: '/dashboard/emplois/salle',    label: 'Emplois salle' },
-      { href: '/dashboard/emplois/prof',     label: 'Emplois professeur' },
-    ],
-  },
+  // L'ANCIEN moteur d'emploi du temps — une grille unique par annee et par
+  // parite, sans numero de semaine — a ete RETIRE DU MENU le 02/10/2026. Il
+  // n'est pas supprime : ses cinq ecrans (gerer, importer, filiere, salle,
+  // prof) repondent toujours, et la page d'accueil `/dashboard/emplois` les
+  // reunit encore.
+  //
+  // Ce qui a decide : la table `Emplois` qu'ils lisent est VIDE — zero ligne,
+  // toutes annees confondues. Les laisser dans la barre laterale, a cote du
+  // moteur hebdomadaire, faisait choisir entre deux portes dont l'une ne mene
+  // nulle part.
+  //
+  // ATTENTION : `Emplois` n'est pas morte pour autant. La projection du nouveau
+  // moteur (`projeter_semaine`) y ecrit juste avant la generation du suivi.
+  // C'est le raccord avec le socle, et il est intact.
   // COEXISTENCE. Le groupe ci-dessus est l'emploi du temps HISTORIQUE : une
   // grille unique par annee et par parite, sans numero de semaine. Il reste en
   // service, entier, et rien ne lui est retire.
@@ -91,7 +94,9 @@ export const NAV_GROUPS: NavGroup[] = [
     // d'entree. C'est la meme perte que celle du brief a propos d'« Importer
     // EDT depuis le suivi » : un endpoint vivant que plus aucune interface
     // n'appelle.
-    key: 'edt', icon: CalendarDays, label: 'Emploi du temps (par semaine)',
+    // « (par semaine) » distinguait ce moteur de l'ancien, desormais hors du
+    // menu : la precision ne sert plus qu'a faire chercher un jumeau absent.
+    key: 'edt', icon: CalendarDays, label: 'Emploi du temps',
     roles: ALL, module: 'emplois',
     items: [
       { href: '/dashboard/emplois/edt/grille',      label: 'Gérer les emplois', action: 'modifier' },
@@ -127,7 +132,12 @@ export const NAV_GROUPS: NavGroup[] = [
     key: 'absences', icon: UserX, label: 'Absences',
     roles: ['admin','DG','DA','DE','scolarite'], module: 'abs_rapport',
     items: [
-      { href: '/dashboard/absences/importer',        label: 'Importer les étudiants', module: 'abs_import',        action: 'modifier' },
+      // « Importer les étudiants » a ete retire de CE menu : l'import n'est pas
+      // un geste quotidien, et il ouvrait la section des absences sur une
+      // action de masse. L'ecran reste atteignable par trois portes — la page
+      // d'accueil des absences, l'ecran de saisie et celui des fiches, qui y
+      // renvoient quand un groupe est vide. Son droit `abs_import:modifier` est
+      // inchange.
       { href: '/dashboard/absences/saisir',          label: 'Marquer absences',        module: 'abs_saisie',        action: 'modifier' },
       { href: '/dashboard/absences/saisir/salle',    label: 'Mode Salle (mobile)',     module: 'abs_saisie',        action: 'modifier' },
       { href: '/dashboard/absences/etudiant',        label: 'ABS par étudiant(e)',     module: 'abs_rapport',       action: 'voir' },
