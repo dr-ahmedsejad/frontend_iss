@@ -13,8 +13,6 @@ interface Props {
   onLinkClick:    () => void;        // typiquement : fermer le drawer mobile
   hideText:       boolean;            // mode collapsed (icônes seules)
   setIsCollapsed: (v: boolean) => void;
-  /** Recherche en cours : tous les groupes trouvés sont ouverts d'office. */
-  toutOuvert?:    boolean;
 }
 
 const GRADIENT_ACTIF = 'linear-gradient(135deg, #006633, #008844)';
@@ -22,7 +20,7 @@ const OR = '#E5C018';
 
 /** Arbre de navigation rendu dans la sidebar. Pas de RBAC ici — fait par resolveGroups en amont. */
 export default function NavTree({
-  groups, pathname, openKey, setOpenKey, onLinkClick, hideText, setIsCollapsed, toutOuvert = false,
+  groups, pathname, openKey, setOpenKey, onLinkClick, hideText, setIsCollapsed,
 }: Props) {
   return (
     <>
@@ -32,8 +30,8 @@ export default function NavTree({
         // Une seule entrée visible : le groupe EST le lien. L'ouvrir pour
         // cliquer son unique entrée — qui répétait souvent son nom, « Mon
         // profil › Mon profil » — coûtait un clic pour rien.
-        const direct   = group.items.length === 1 && !toutOuvert;
-        const isOpen   = !direct && (toutOuvert || openKey === group.key);
+        const direct   = group.items.length === 1;
+        const isOpen   = !direct && openKey === group.key;
         const enAvant  = direct ? isActive : isOpen;
 
         const classes = `w-full flex items-center ${hideText ? 'justify-center px-0' : 'gap-2.5 px-3'} py-2 rounded-xl mb-0.5 font-medium transition-all relative group ${
@@ -99,7 +97,7 @@ export default function NavTree({
                   if (hideText) {
                     setIsCollapsed(false);
                     setOpenKey(group.key);
-                  } else if (!toutOuvert) {
+                  } else {
                     setOpenKey(isOpen ? null : group.key);
                   }
                 }}

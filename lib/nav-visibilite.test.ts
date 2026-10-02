@@ -8,7 +8,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { entreesVisibles, filtrerMenu, normaliser, type Peut } from './nav-visibilite.ts';
+import { entreesVisibles, type Peut } from './nav-visibilite.ts';
 
 /** Un jeu de droits RBAC : la liste des « module:action » accordés. */
 const droits = (...accordes: string[]): Peut =>
@@ -92,28 +92,3 @@ test("une entrée « menu: false » n'est jamais rendue, même avec tous les dro
                    ['Éléments de module (EM)']);
 });
 
-// ── La recherche ──────────────────────────────────────────────────────────────
-
-const MENU = [
-  { label: 'Calendrier', items: [{ label: 'Semaines' }, { label: 'Jours fériés' }, { label: 'Ramadan' }] },
-  { label: 'Jury et délibérations', items: [{ label: 'Délibérations' }, { label: 'Rachats jury' }] },
-  { label: 'Salles', items: [{ label: 'Liste des salles' }] },
-];
-
-test('la recherche ignore accents et majuscules', () => {
-  assert.equal(normaliser('  Jours FÉRIÉS '), 'jours feries');
-  const r = filtrerMenu(MENU, 'ferie');
-  assert.deepEqual(r.map(g => g.label), ['Calendrier']);
-  assert.deepEqual(libelles(r[0].items), ['Jours fériés']);
-});
-
-test('un groupe trouvé par son nom garde toutes ses entrées', () => {
-  const r = filtrerMenu(MENU, 'jury');
-  assert.deepEqual(r.map(g => g.label), ['Jury et délibérations']);
-  assert.equal(r[0].items.length, 2);
-});
-
-test('une recherche vide rend le menu entier ; rien de trouvé rend un menu vide', () => {
-  assert.equal(filtrerMenu(MENU, '   ').length, 3);
-  assert.deepEqual(filtrerMenu(MENU, 'zzz'), []);
-});

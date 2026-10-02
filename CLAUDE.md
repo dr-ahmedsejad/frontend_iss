@@ -103,7 +103,7 @@ lib/
                        facilement (voir memory project_monitoring.md).
   nav-config.ts       → NAV_GROUPS data (ajouter une entrée menu = ici)
   nav-filter.ts       → visibleItems, isGroupActive, resolveGroups
-  nav-visibilite.ts   → la règle de visibilité du menu et la recherche, pures et testées
+  nav-visibilite.ts   → la règle de visibilité du menu, pure et testée
                        (`node --test`). Une entrée « Ajouter » de référentiel reste dans
                        nav-config avec `menu: false` : la page Permissions y lit ses droits.
   query-client.ts     → singleton QueryClient (utilisé par _forceLogout pour .clear())

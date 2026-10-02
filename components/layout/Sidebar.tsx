@@ -1,10 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo } from 'react';
 import Image from 'next/image';
-import { Search, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import type { NavGroupResolved } from '@/lib/nav-config';
-import { filtrerMenu } from '@/lib/nav-visibilite';
 import { safeImageSrc } from '@/lib/safe-image';
 import NavTree from './NavTree';
 
@@ -28,43 +27,11 @@ export default function Sidebar({
   // Masquer les textes uniquement sur desktop ET si c'est "collapsed"
   const hideText = isCollapsed && !mobile;
 
-  // Notifications vit en bas de la barre, hors de l'arbre et de la recherche.
+  // Notifications vit en bas de la barre, hors de l'arbre.
   const arbre    = useMemo(() => groups.filter(g => !g.epingle), [groups]);
   const epingles = useMemo(() => groups.filter(g => g.epingle), [groups]);
 
-  // ── Recherche ─────────────────────────────────────────────────────────────
-  // Un administrateur a près de cent entrées : taper « férié » est plus rapide
-  // que de se souvenir du groupe. Les titres de section sont recalculés sur le
-  // résultat — sinon un groupe trouvé perdait le sien quand le premier groupe
-  // de sa section ne correspondait pas.
-  const [recherche, setRecherche] = useState('');
-  const champ = useRef<HTMLInputElement>(null);
-  const trouves = useMemo(() => {
-    if (!recherche.trim()) return arbre;
-    const vus = new Set<string>();
-    return filtrerMenu(arbre, recherche).map(g => {
-      const showSection = !!g.section && !vus.has(g.section);
-      if (g.section) vus.add(g.section);
-      return { ...g, showSection };
-    });
-  }, [arbre, recherche]);
-
-  // Ctrl+K (⌘K) ouvre la barre si elle est réduite et place le curseur dans le
-  // champ. Écouté par la barre de bureau seule : le tiroir mobile n'a pas de clavier.
-  useEffect(() => {
-    if (mobile) return;
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        setIsCollapsed(false);
-        setTimeout(() => champ.current?.focus(), 0);
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [mobile, setIsCollapsed]);
-
-  const fermerApresClic = () => { setRecherche(''); setSidebarOpen(false); };
+  const fermerApresClic = () => setSidebarOpen(false);
 
   return (
     <aside className={`transition-all duration-300 ease-in-out shrink-0 z-50 ${
@@ -98,47 +65,17 @@ export default function Sidebar({
         )}
       </div>
 
-      {/* Recherche */}
-      {!hideText && (
-        <div className="px-3 pt-3 shrink-0">
-          <label className="relative block">
-            <span className="sr-only">Rechercher dans le menu</span>
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-iss-gray pointer-events-none" />
-            <input
-              ref={champ}
-              type="search"
-              value={recherche}
-              onChange={e => setRecherche(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Escape') setRecherche(''); }}
-              placeholder="Rechercher…"
-              className="w-full pl-8 pr-12 py-2 rounded-xl text-[13px] bg-gray-50 border border-gray-100 text-iss-dark placeholder:text-iss-gray/70 focus:outline-none focus:border-iss-primary/40 focus:bg-white"
-            />
-            {!mobile && !recherche && (
-              <kbd className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-iss-gray/70 border border-gray-200 rounded px-1 py-px font-sans pointer-events-none">
-                Ctrl K
-              </kbd>
-            )}
-          </label>
-        </div>
-      )}
-
       {/* Nav */}
       <nav className="flex-1 px-2 py-2 overflow-y-auto overflow-x-hidden">
         <NavTree
-          groups={trouves}
+          groups={arbre}
           pathname={pathname}
           openKey={openKey}
           setOpenKey={setOpenKey}
           onLinkClick={fermerApresClic}
           hideText={hideText}
           setIsCollapsed={setIsCollapsed}
-          toutOuvert={!!recherche.trim()}
         />
-        {recherche.trim() && trouves.length === 0 && (
-          <p className="px-3 py-4 text-[13px] text-iss-gray">
-            Aucune entrée ne contient « {recherche.trim()} ».
-          </p>
-        )}
       </nav>
 
       {/* Épinglé en bas : Notifications */}

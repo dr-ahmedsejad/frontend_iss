@@ -53,26 +53,3 @@ export function entreesVisibles<E extends EntreeDeMenu>(
   });
 }
 
-/** Sans accents ni majuscules : « férié » trouve « Jours fériés ». */
-export function normaliser(texte: string): string {
-  return texte.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
-}
-
-/**
- * La recherche du menu : les groupes dont une entrée — ou le nom du groupe
- * lui-même — contient le texte. Un groupe qui correspond par son nom garde
- * toutes ses entrées ; sinon, seules celles qui correspondent.
- */
-export function filtrerMenu<G extends { label: string; items: readonly { label: string }[] }>(
-  groupes: readonly G[], recherche: string,
-): G[] {
-  const q = normaliser(recherche);
-  if (!q) return [...groupes];
-  const sortie: G[] = [];
-  for (const g of groupes) {
-    if (normaliser(g.label).includes(q)) { sortie.push(g); continue; }
-    const items = g.items.filter(i => normaliser(i.label).includes(q));
-    if (items.length) sortie.push({ ...g, items });
-  }
-  return sortie;
-}
