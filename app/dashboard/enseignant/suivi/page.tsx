@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import { getStoredUser } from '@/lib/auth';
 import { useToast, ToastContainer } from '@/components/ui/Toast';
+import { fetchReclamationsSeance, reclamationSeanceKeys, reclamerSeance } from '@/lib/api/portail-en-ligne';
 
 interface Jour    { id: number; jour: string; }
 interface Creneau { id: number; creneau: string; ordre: number; }
@@ -83,13 +84,25 @@ export default function SuiviEnseignantPage() {
   const grilleCreneaux = grilleData?.creneaux ?? [];
   const error = grilleError ? (grilleError as Error).message : '';
 
+  // La réclamation va dans la BOÎTE DE RÉCEPTION (/reclamations/seances/), et
+  // non plus dans le pointage : sur le portail en ligne, le pointage est une
+  // table publiée, que chaque publication réécrit. Le statut affiché réunit les
+  // deux — le champ du pointage pour les réclamations d'avant.
+  const { data: mesReclamations = [] } = useQuery({
+    queryKey: reclamationSeanceKeys.list('mes'),
+    queryFn:  () => fetchReclamationsSeance(),
+  });
+  const statutDe = (e: Emploi): string | undefined =>
+    mesReclamations.find(r => r.pointage_id === e.id && r.statut !== 'rejetee')?.statut
+      ?? e.reclamation_statut;
+
   const reclamerMut = useMutation({
-    mutationFn: ({ id, m }: { id: number; m: string }) =>
-      apiFetch(`/api/v1/suivi/pointages/${id}/reclamer/`, { method: 'POST', body: { motif: m } }),
+    mutationFn: ({ id, m }: { id: number; m: string }) => reclamerSeance(id, m),
     onSuccess: () => {
       toast.success('Réclamation envoyée avec succès.');
       setModal(null);
       setMotif('');
+      qc.invalidateQueries({ queryKey: reclamationSeanceKeys.all });
       qc.invalidateQueries({ queryKey: grilleKey });
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : 'Erreur lors de l\'envoi.'),
@@ -259,11 +272,11 @@ export default function SuiviEnseignantPage() {
                                     <div className="text-[10px] text-slate-400 truncate">{e.dept_noms.join(' · ')}</div>
                                   )}
                                   {!fait && (
-                                    e.reclamation_statut === 'en_attente' ? (
+                                    statutDe(e) === 'en_attente' ? (
                                       <span className="mt-1.5 inline-block text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
                                         Réclamation en attente
                                       </span>
-                                    ) : e.reclamation_statut === 'acceptee' ? (
+                                    ) : statutDe(e) === 'acceptee' ? (
                                       <span className="mt-1.5 inline-block text-[10px] font-semibold text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-md">
                                         Réclamation acceptée
                                       </span>

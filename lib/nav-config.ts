@@ -6,7 +6,7 @@ import {
   GraduationCap, UserCheck, FileBadge, BellRing, Scale,
   LayoutDashboard, AlertCircle, ClipboardCheck, Edit3,
   ArrowUpCircle, History, Briefcase, Database,
-  LayoutGrid, Contact, Gavel,
+  LayoutGrid, Contact, Gavel, RefreshCw, Globe,
 } from 'lucide-react';
 import type { UserRole, RbacAction } from '@/lib/auth';
 import {
@@ -397,6 +397,26 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/dashboard/parametres/backups',             label: 'Liste & téléchargement' },
       { href: '/dashboard/parametres/permissions-backup',  label: 'Utilisateurs autorisés' },
+    ],
+  },
+  // ── Portail en ligne ─────────────────────────────────────────────────────────
+  // Le portail des étudiants et des enseignants tourne sur un MIROIR (autre VPS)
+  // en lecture seule ; ce qu'on y écrit arrive dans une boîte de réception.
+  // Publier part du serveur de travail, administrateur seul ; sur le miroir,
+  // l'écran le dit et n'offre pas de bouton.
+  {
+    key: 'synchronisation', icon: RefreshCw, label: 'Synchronisation',
+    section: 'Portail en ligne', roles: ADMIN_ONLY,
+    items: [
+      { href: '/dashboard/synchronisation', label: 'Publier vers le portail' },
+    ],
+  },
+  {
+    key: 'portail-en-ligne', icon: Globe, label: 'Portail en ligne',
+    roles: ADMIN_IT,
+    items: [
+      { href: '/dashboard/suivi/reclamations-seance',    label: 'Réclamations séances' },
+      { href: '/dashboard/evaluations/saisie-en-ligne',  label: 'Saisie de notes en ligne' },
     ],
   },
   // ── Épinglé en bas de la barre, hors des sections (comme SIGA-PRIVE) ──────────

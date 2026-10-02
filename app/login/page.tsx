@@ -8,6 +8,7 @@ import Image from 'next/image';
 import { login, getStoredUser, type SemestreType } from '@/lib/auth';
 import { safeNextUrl } from '@/lib/safe-redirect';
 import { safeImageSrc } from '@/lib/safe-image';
+import { MirrorBanner } from '@/components/MirrorBanner';
 interface Year { id: number; annee: string; }
 interface Institution { nom_fr: string; acronyme: string; logo_url: string | null; }
 
@@ -116,6 +117,9 @@ function LoginForm() {
   const INPUT_CLASS = "w-full px-4 py-3.5 rounded-xl border-2 border-[#006633]/15 text-sm text-gray-900 bg-white hover:border-[#006633]/40 focus:outline-none focus:border-[#006633] focus:ring-4 focus:ring-[#006633]/10 transition-all duration-200 placeholder:text-gray-400";
 
   return (
+    <>
+    {/* Sur le miroir seulement : « consultation seule », lisible avant la connexion. */}
+    <MirrorBanner />
     <div className="min-h-screen flex w-full bg-white font-sans">
       
       {/* ========================================================= */}
@@ -307,6 +311,7 @@ function LoginForm() {
         </div>
       </div>
     </div>
+    </>
   );
 }
 

@@ -17,6 +17,7 @@ import { useInactivityTimer } from '@/hooks/useInactivityTimer';
 import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
 import InactivityModal from '@/components/layout/InactivityModal';
+import { MirrorBanner } from '@/components/MirrorBanner';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router   = useRouter();
@@ -189,6 +190,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       )}
 
       <div className="flex-1 flex flex-col min-w-0">
+        {/* Sur le miroir seulement : « consultation seule ». */}
+        <MirrorBanner />
         <Topbar
           user={user}
           institutionNom={instNom}

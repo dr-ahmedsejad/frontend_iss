@@ -6,6 +6,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import { getStoredUser } from '@/lib/auth';
 import { useToast, ToastContainer } from '@/components/ui/Toast';
+import { useEstMiroir } from '@/lib/instance';
+import { brouillonKeys, enregistrerBrouillon, fetchBrouillons } from '@/lib/api/portail-en-ligne';
 
 interface Session {
   id:              number;
@@ -93,6 +95,17 @@ export default function NotesEnseignantPage() {
   // useMemo pour stabiliser la référence : sans ça, `?? []` crée un nouveau []
   // à chaque render quand data est undefined → useEffect en boucle infinie.
   const feuille = useMemo(() => feuilleQueryData ?? [], [feuilleQueryData]);
+
+  // Sur le PORTAIL EN LIGNE (miroir), la saisie ne touche jamais les notes
+  // officielles : elle enregistre un BROUILLON, que la scolarité ressaisit sur
+  // le serveur de travail. Le brouillon déjà saisi remplace l'affichage des
+  // notes officielles, pour que l'enseignant retrouve ce qu'il a tapé.
+  const estMiroir = useEstMiroir();
+  const { data: brouillons } = useQuery({
+    queryKey: brouillonKeys.list(sessionId, emId),
+    queryFn:  () => fetchBrouillons(sessionId, emId),
+    enabled:  estMiroir && !!sessionId && !!emId,
+  });
   const feuilleData = feuille;
   const errorFeuille = feuilleError ? (feuilleError instanceof Error ? feuilleError.message : 'Impossible de charger la feuille de notes.') : '';
 
@@ -106,8 +119,11 @@ export default function NotesEnseignantPage() {
         exam: r.exam.valeur != null ? String(r.exam.valeur) : '',
       };
     });
+    (brouillons ?? []).forEach(b => {
+      init[b.inscription_element] = { cc: b.cc ?? '', tp: b.tp ?? '', exam: b.exam ?? '' };
+    });
     setEditNotes(init);
-  }, [feuilleData]);
+  }, [feuilleData, brouillons]);
 
   const loadFeuille = () => qc.invalidateQueries({ queryKey: feuilleKey });
 
@@ -127,14 +143,19 @@ export default function NotesEnseignantPage() {
           exam: parse(e.exam),
         };
       });
+      if (estMiroir) {
+        return enregistrerBrouillon(Number(sessionId), rows).then(res =>
+          `Brouillon enregistré (${res.enregistres} étudiant(s)). Ces notes ne sont pas encore officielles.`);
+      }
       return apiFetch<{ created: number; updated: number }>(
         '/api/v1/evaluations/notes/saisir-bulk/',
         { method: 'POST', body: { session: Number(sessionId), rows } },
-      );
+      ).then(res => `${res.created + res.updated} note(s) enregistrée(s).`);
     },
-    onSuccess: (res) => {
-      toast.success(`${res.created + res.updated} note(s) enregistrée(s).`);
+    onSuccess: (message) => {
+      toast.success(message);
       qc.invalidateQueries({ queryKey: feuilleKey });
+      qc.invalidateQueries({ queryKey: brouillonKeys.all });
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : "Erreur lors de l'enregistrement."),
   });
@@ -173,6 +194,15 @@ export default function NotesEnseignantPage() {
           <p className="text-xs text-slate-400">{annee} — Semestre {typeSem}</p>
         </div>
       </div>
+
+      {estMiroir && (
+        <div className="rounded-lg border px-4 py-3 text-xs text-amber-950"
+          style={{ background: '#FEF3C7', borderColor: '#FCD34D' }}>
+          Sur le portail en ligne, vos notes sont enregistrées comme <strong>brouillon</strong> : la
+          scolarité les reporte ensuite dans les notes officielles. Elles n’apparaissent pas aux
+          étudiants avant ce report.
+        </div>
+      )}
 
       {/* Sélection session + EM */}
       <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
