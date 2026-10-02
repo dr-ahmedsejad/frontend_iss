@@ -12,7 +12,10 @@ export type AuditAction =
   | 'LOGOUT'
   | 'PASSWORD_CHANGED'
   | 'PASSWORD_RESET'
-  | 'PERMISSION_DENIED';
+  | 'PERMISSION_DENIED'
+  // Verrouillage par django-axes, et déblocage par un administrateur.
+  | 'ACCOUNT_LOCKED'
+  | 'ACCOUNT_UNLOCKED';
 
 export interface AuditChangeValue {
   old: unknown;

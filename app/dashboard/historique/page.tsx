@@ -29,6 +29,14 @@ const ACTION_OPTIONS = [
   { value: 'LOGIN_SUCCESS',     label: 'Connexion réussie' },
   { value: 'LOGIN_FAILED',      label: 'Échec connexion' },
   { value: 'LOGOUT',            label: 'Déconnexion' },
+  // Ces cinq actions étaient déclarées côté serveur et n'avaient jamais produit
+  // une ligne. Maintenant qu'elles en produisent, il faut pouvoir les isoler —
+  // c'est précisément ce qu'on vient chercher après un incident.
+  { value: 'PASSWORD_CHANGED',  label: 'Mot de passe modifié' },
+  { value: 'PASSWORD_RESET',    label: 'Mot de passe réinitialisé' },
+  { value: 'PERMISSION_DENIED', label: 'Accès refusé' },
+  { value: 'ACCOUNT_LOCKED',    label: 'Compte verrouillé' },
+  { value: 'ACCOUNT_UNLOCKED',  label: 'Compte débloqué' },
 ];
 
 const PAGE_SIZE = 20;

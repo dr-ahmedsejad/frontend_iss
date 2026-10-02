@@ -18,6 +18,8 @@ const VARIANT: Record<AuditAction, BadgeVariant> = {
   PASSWORD_CHANGED:  'warning',
   PASSWORD_RESET:    'warning',
   PERMISSION_DENIED: 'danger',
+  ACCOUNT_LOCKED:    'danger',
+  ACCOUNT_UNLOCKED:  'warning',
 };
 
 const LABEL: Record<AuditAction, string> = {
@@ -35,6 +37,8 @@ const LABEL: Record<AuditAction, string> = {
   PASSWORD_CHANGED:  'MDP modifié',
   PASSWORD_RESET:    'MDP réinitialisé',
   PERMISSION_DENIED: 'Accès refusé',
+  ACCOUNT_LOCKED:    'Compte verrouillé',
+  ACCOUNT_UNLOCKED:  'Compte débloqué',
 };
 
 export default function ActionBadge({ action, label }: { action: AuditAction | string; label?: string }) {
