@@ -38,6 +38,9 @@ interface Semestre    {
 interface Etudiant { id: number; matricule: string; nom: string; genre: string; }
 /** Un étudiant d'un AUTRE groupe, inscrit à cet élément en dette. */
 interface EtudiantDette extends Etudiant { groupe: string; }
+/** Un membre du groupe inscrit dans une AUTRE filière, placé ici pour la
+ *  planification : il suit les cours sans être inscrit aux éléments. */
+interface EtudiantRattache extends Etudiant { filiere: string; }
 
 /** La liste d'appel d'une séance, telle que le serveur la calcule.
  *  Même source que le PDF — voir `apps/absence/liste_appel.py`. */
@@ -47,6 +50,7 @@ interface ListeAppel {
   filiere:             string;
   source:              'inscriptions' | 'groupe';
   etudiants:           Etudiant[];
+  rattaches:           EtudiantRattache[];
   dettes:              EtudiantDette[];
   liste_non_verifiee:  boolean;
 }
@@ -71,6 +75,8 @@ interface SuivieRow {
 interface FicheGroup {
   suivi:      SuivieRow;
   etudiants:  Etudiant[];
+  /** Membres du groupe inscrits dans une autre filière. */
+  rattaches:  EtudiantRattache[];
   /** Inscrits à l'élément mais venus d'un autre groupe. */
   dettes:     EtudiantDette[];
   /** Les inscriptions à cet élément n'ont pas été saisies : liste du groupe. */
@@ -220,7 +226,7 @@ export default function FichesPresencePage() {
 
         const depId = s.departement ?? null;
         let liste: ListeAppel = { groupe_libelle: '', filiere: '', source: 'groupe',
-                                  etudiants: [], dettes: [], liste_non_verifiee: true };
+                                  etudiants: [], rattaches: [], dettes: [], liste_non_verifiee: true };
         if (depId) {
           const cle = `${depId}|${s.em ?? ''}`;
           if (listes.has(cle)) {
@@ -240,6 +246,7 @@ export default function FichesPresencePage() {
         groups.push({
           suivi:       s,
           etudiants:   liste.etudiants,
+          rattaches:   liste.rattaches ?? [],
           dettes:      liste.dettes,
           nonVerifiee: liste.liste_non_verifiee,
           depNom:      departements.find(d => d.id === depId)?.nom ?? s.dept_nom ?? '—',
@@ -454,7 +461,7 @@ export default function FichesPresencePage() {
                   </div>
 
                   {/* Liste étudiants */}
-                  {fiche.etudiants.length === 0 && fiche.dettes.length === 0 ? (
+                  {fiche.etudiants.length === 0 && fiche.rattaches.length === 0 && fiche.dettes.length === 0 ? (
                     <div className="px-5 py-8 text-center">
                       <Users size={24} className="mx-auto mb-2 text-iss-gray/30" />
                       <p className="text-xs text-iss-gray">Aucun étudiant inscrit dans ce groupe.</p>
@@ -482,12 +489,29 @@ export default function FichesPresencePage() {
                                 <td className="text-center">&nbsp;</td>
                               </tr>
                             ))}
+                            {/* Les rattachés : du groupe, mais inscrits dans une
+                                autre filière. Leur filière est écrite, comme le
+                                groupe d'une dette, pour qu'on ne les prenne pas
+                                pour une erreur de liste. */}
+                            {fiche.rattaches.map((etu, ei) => (
+                              <tr key={`r-${etu.id}`}
+                                  className={(fiche.etudiants.length + ei) % 2 === 0 ? '' : 'bg-gray-50/50'}>
+                                <td className="text-center"><code className="text-xs font-bold">{etu.matricule}</code></td>
+                                <td className="font-medium text-iss-dark">
+                                  {etu.nom}
+                                  <span className="ml-2 text-[11px] font-normal text-iss-gray">
+                                    — rattaché·e · inscrit·e en {etu.filiere}
+                                  </span>
+                                </td>
+                                <td className="text-center">&nbsp;</td>
+                              </tr>
+                            ))}
                             {/* Les dettes, à la suite et NOMMÉES comme telles :
                                 un nom venu d'ailleurs qu'on prendrait pour un
                                 camarade de promotion ferait douter de la liste. */}
                             {fiche.dettes.map((etu, ei) => (
                               <tr key={`d-${etu.id}`}
-                                  className={(fiche.etudiants.length + ei) % 2 === 0 ? '' : 'bg-gray-50/50'}>
+                                  className={(fiche.etudiants.length + fiche.rattaches.length + ei) % 2 === 0 ? '' : 'bg-gray-50/50'}>
                                 <td className="text-center"><code className="text-xs font-bold">{etu.matricule}</code></td>
                                 <td className="font-medium text-iss-dark">
                                   {etu.nom}
