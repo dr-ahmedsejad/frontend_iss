@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  ArrowLeft, CalendarDays, Trash2, Edit3,
+  ArrowLeft, CalendarDays, Trash2, Edit3, Plus,
   ChevronDown, Filter, CheckCircle, AlertCircle, Loader2, X, CalendarX2,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
@@ -235,6 +235,13 @@ export default function SemainesPage() {
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90 transition-all"
             style={{ background: 'linear-gradient(135deg,#B8960C,#D4A80E)' }}>
             Générer
+          </Link>
+          {/* L'entrée « Ajouter semaine » a quitté le menu le 02/10/2026 : comme
+              les autres listes de référentiels, celle-ci porte son bouton. */}
+          <Link href="/dashboard/parametres/semaines/ajouter"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90 transition-all"
+            style={{ background: 'linear-gradient(135deg,#006633,#008844)' }}>
+            <Plus size={14} /> Ajouter
           </Link>
         </div>
       </div>

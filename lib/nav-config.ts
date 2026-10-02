@@ -1,13 +1,12 @@
 import {
   BarChart2, Calendar, ClipboardList, TrendingUp, UserX,
-  Banknote, Users, Building2, BookOpen, DoorOpen,
-  Landmark, UserCog, Unlock, CalendarDays, Layers, List,
-  CalendarRange, Clock, Presentation, Coins, Sun, Moon,
+  Banknote, Users, BookMarked, DoorOpen, Landmark, UserCog,
+  CalendarDays, CalendarRange, Clock, Coins,
   ChevronRight, Bell, User, KeyRound, ChevronDown,
-  GraduationCap, UserCheck, FileBadge, BellRing, Globe, Scale,
+  GraduationCap, UserCheck, FileBadge, BellRing, Scale,
   LayoutDashboard, AlertCircle, ClipboardCheck, Edit3,
-  BookMarked, ArrowUpCircle, MessageSquareWarning, History,
-  Briefcase, Shield, Database, ShieldCheck, CalendarX2,
+  ArrowUpCircle, History, Briefcase, Database,
+  LayoutGrid, Contact, Gavel,
 } from 'lucide-react';
 import type { UserRole, RbacAction } from '@/lib/auth';
 import {
@@ -24,6 +23,14 @@ export interface SubItem {
   /** Module RBAC override pour ce sous-item. Si défini, prime sur group.module.
    *  Sert pour le découpage granulaire (ex: documents/diplome → 'doc_diplome'). */
   module?: string;
+  /** Rôles autorisés, pour une entrée SANS module RBAC dans un groupe qui en
+   *  réunit d'origines diverses (ex. « Débloquer un compte », ouvert à IT, dans
+   *  « Comptes et droits », réservé à l'admin). Défaut : les rôles du groupe. */
+  roles?:  UserRole[];
+  /** `false` : l'entrée n'apparaît pas dans la barre latérale, mais reste dans
+   *  la configuration — la page Permissions y lit les droits à afficher. Sert
+   *  aux « Ajouter … » des référentiels, que la page de liste porte déjà. */
+  menu?:   false;
 }
 export interface NavGroup {
   key:          string;
@@ -33,9 +40,13 @@ export interface NavGroup {
   /** Filtre par rôle (legacy + portails étudiant/enseignant + admin-only sans module RBAC). */
   roles:        UserRole[];
   /** Module RBAC qui contrôle la visibilité de ce groupe (Phase 0+ RBAC).
-   *  Si défini, canSee() utilise canAccess(module, 'voir') au lieu du filtre par rôle.
-   *  Laissé `undefined` pour les groupes purement admin-only ou portails (filtrage par rôle). */
+   *  Si défini, le groupe exige canAccess(module, 'voir') au lieu du filtre par rôle.
+   *  Laissé `undefined` pour les groupes admin-only, les portails, et ceux qui
+   *  réunissent des entrées d'origines diverses : chaque entrée porte alors son
+   *  propre droit, et le groupe s'affiche dès qu'une entrée est visible. */
   module?:      string;
+  /** Épinglé en bas de la barre latérale, hors des sections (Notifications). */
+  epingle?:     boolean;
   items:        SubItem[];
 }
 export interface NavGroupResolved extends NavGroup { showSection: boolean; }
@@ -47,16 +58,42 @@ export {
 
 // ── Configuration du menu ─────────────────────────────────────────────────────
 export const NAV_GROUPS: NavGroup[] = [
+  // Le SQUELETTE est celui de SIGA-PRIVE — mêmes sections, même ordre,
+  // notifications épinglées en bas — pour qu'une correction de menu passe d'un
+  // produit à l'autre sans traduction. Refonte validée le 02/10/2026.
+  //
+  // Trois règles, à garder en ajoutant une entrée :
+  //   * une entrée « Ajouter … » d'un référentiel n'a pas sa place dans le menu :
+  //     la page de liste porte son bouton. Elle reste ici, marquée `menu: false`,
+  //     parce que la page Permissions construit sa matrice depuis cette
+  //     configuration — l'en retirer ferait disparaître l'interrupteur du droit ;
+  //   * chaque groupe a SON icône : en menu réduit, c'est tout ce qui le distingue ;
+  //   * un groupe sans `module` qui réunit des entrées d'origines diverses porte
+  //     le droit sur chaque entrée (`module` ou `roles`) : c'est l'entrée, pas le
+  //     groupe, qui décide de sa visibilité. Personne n'y gagne ni n'y perd un accès.
+
+  // ── Pilotage ─────────────────────────────────────────────────────────────────
   {
     key: 'statistiques', icon: BarChart2, label: 'Statistiques',
-    section: 'Menu principal', roles: MANAGE, module: 'statistiques',
+    section: 'Pilotage', roles: MANAGE, module: 'statistiques',
     items: [
-      { href: '/dashboard/statistiques/profs',                label: 'Profs' },
+      { href: '/dashboard/statistiques/profs',                label: 'Professeurs' },
       { href: '/dashboard/statistiques/semestres',            label: 'Avancement par semestre' },
       { href: '/dashboard/statistiques/vacations',            label: 'Vacations par mois' },
       { href: '/dashboard/statistiques/repartition-charges',  label: 'Répartition des charges' },
     ],
   },
+  {
+    key: 'avancement', icon: TrendingUp, label: 'Avancement',
+    roles: MANAGE, module: 'avancement',
+    items: [
+      { href: '/dashboard/avancement/em',         label: 'Avancement EMs' },
+      { href: '/dashboard/avancement/profs',      label: 'Avancement profs' },
+      { href: '/dashboard/avancement/permanents', label: 'Charge profs permanents' },
+      { href: '/dashboard/avancement/details',    label: 'Détails des enseignements' },
+    ],
+  },
+  // ── Vie académique ───────────────────────────────────────────────────────────
   // L'ANCIEN moteur d'emploi du temps — une grille unique par annee et par
   // parite, sans numero de semaine — a ete RETIRE DU MENU le 02/10/2026. Il
   // n'est pas supprime : ses cinq ecrans (gerer, importer, filiere, salle,
@@ -97,7 +134,7 @@ export const NAV_GROUPS: NavGroup[] = [
     // « (par semaine) » distinguait ce moteur de l'ancien, desormais hors du
     // menu : la precision ne sert plus qu'a faire chercher un jumeau absent.
     key: 'edt', icon: CalendarDays, label: 'Emploi du temps',
-    roles: ALL, module: 'emplois',
+    section: 'Vie académique', roles: ALL, module: 'emplois',
     items: [
       { href: '/dashboard/emplois/edt/grille',      label: 'Gérer les emplois', action: 'modifier' },
       { href: '/dashboard/emplois/edt/classe',      label: 'Emploi par filière' },
@@ -107,7 +144,7 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    key: 'suivi', icon: ClipboardList, label: 'Suivi',
+    key: 'suivi', icon: ClipboardCheck, label: 'Suivi',
     roles: ALL, module: 'suivi_fiches',
     items: [
       { href: '/dashboard/suivi/ajouter',              label: 'Ajouter suivi',         module: 'suivi_saisie',  action: 'modifier' },
@@ -116,16 +153,6 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: '/dashboard/suivi/remplissage',          label: 'Remplissage',           module: 'suivi_saisie',  action: 'modifier' },
       { href: '/dashboard/suivi/rattrapage',           label: 'Rattrapage',            module: 'suivi_saisie',  action: 'voir' },
       { href: '/dashboard/suivi/charges',              label: 'Charges GP',            module: 'suivi_charges', action: 'voir' },
-    ],
-  },
-  {
-    key: 'avancement', icon: TrendingUp, label: 'Avancement',
-    roles: MANAGE, module: 'avancement',
-    items: [
-      { href: '/dashboard/avancement/em',         label: 'Avancement EMs' },
-      { href: '/dashboard/avancement/profs',      label: 'Avancement profs' },
-      { href: '/dashboard/avancement/permanents', label: 'Charge profs permanents' },
-      { href: '/dashboard/avancement/details',    label: 'Détails des enseignements' },
     ],
   },
   {
@@ -138,241 +165,52 @@ export const NAV_GROUPS: NavGroup[] = [
       // d'accueil des absences, l'ecran de saisie et celui des fiches, qui y
       // renvoient quand un groupe est vide. Son droit `abs_import:modifier` est
       // inchange.
-      { href: '/dashboard/absences/saisir',          label: 'Marquer absences',        module: 'abs_saisie',        action: 'modifier' },
-      { href: '/dashboard/absences/saisir/salle',    label: 'Mode Salle (mobile)',     module: 'abs_saisie',        action: 'modifier' },
-      { href: '/dashboard/absences/etudiant',        label: 'ABS par étudiant(e)',     module: 'abs_rapport',       action: 'voir' },
-      { href: '/dashboard/absences/rapport',         label: 'Rapport absences',        module: 'abs_rapport',       action: 'voir' },
-      { href: '/dashboard/absences/stats',           label: 'Statistiques ABS',        module: 'abs_rapport',       action: 'voir' },
-      { href: '/dashboard/absences/fiches',          label: 'Fiches de présence',      module: 'abs_rapport',       action: 'voir' },
-      { href: '/dashboard/absences/justificatifs',   label: 'Justificatifs (DA)',      module: 'abs_justificatifs', action: 'modifier' },
+      { href: '/dashboard/absences/saisir',          label: 'Marquer absences',          module: 'abs_saisie',        action: 'modifier' },
+      { href: '/dashboard/absences/saisir/salle',    label: 'Appel en salle (mobile)',   module: 'abs_saisie',        action: 'modifier' },
+      { href: '/dashboard/absences/etudiant',        label: 'Absences par étudiant',     module: 'abs_rapport',       action: 'voir' },
+      { href: '/dashboard/absences/rapport',         label: 'Rapport absences',          module: 'abs_rapport',       action: 'voir' },
+      { href: '/dashboard/absences/stats',           label: 'Statistiques des absences', module: 'abs_rapport',       action: 'voir' },
+      { href: '/dashboard/absences/fiches',          label: 'Fiches de présence',        module: 'abs_rapport',       action: 'voir' },
+      { href: '/dashboard/absences/justificatifs',   label: 'Justificatifs',             module: 'abs_justificatifs', action: 'modifier' },
     ],
   },
+  // ── Scolarité ────────────────────────────────────────────────────────────────
   {
-    key: 'vacations', icon: Banknote, label: 'Vacations',
-    roles: MANAGE, module: 'vac_saisie',
+    // Les étages d'une même maquette, départements en tête comme à SIGA-PRIVE.
+    // Chaque entrée garde le droit de l'ancien groupe dont elle vient.
+    key: 'formation', icon: GraduationCap, label: 'Offre de formation',
+    section: 'Scolarité', roles: [...new Set([...SCOLARITE, ...MANAGE])],
     items: [
-      { href: '/dashboard/payement/ajouter',     label: 'Ajouter vacation',          module: 'vac_saisie',     action: 'modifier' },
-      { href: '/dashboard/payement/liste',       label: 'Liste des vacations',       module: 'vac_saisie',     action: 'voir' },
-      { href: '/dashboard/payement/fiches',      label: 'Fiches vacataires',         module: 'vac_saisie',     action: 'voir' },
-      { href: '/dashboard/payement/etat',        label: 'État de vacation',          module: 'vac_validation', action: 'voir' },
-      { href: '/dashboard/payement/details',     label: 'Détails de vacation',       module: 'vac_validation', action: 'voir' },
-      { href: '/dashboard/payement/heures-supp', label: 'Heures supp. permanents',   module: 'vac_validation', action: 'voir' },
-      { href: '/dashboard/payement/attestation', label: 'Attestation',               module: 'vac_paiement',   action: 'modifier' },
+      { href: '/dashboard/scolarite/departements',     label: 'Départements',            module: 'scolarite' },
+      { href: '/dashboard/scolarite/filieres',         label: 'Filières',                module: 'scolarite_filieres' },
+      { href: '/dashboard/scolarite/filieres/ajouter', label: 'Ajouter filière',         module: 'scolarite_filieres', action: 'modifier', menu: false },
+      { href: '/dashboard/parametres/niveaux',         label: "Niveaux d'étude",         roles: ADMIN_ONLY },
+      { href: '/dashboard/parametres/niveaux/ajouter', label: 'Ajouter niveau',          roles: ADMIN_ONLY, menu: false },
+      { href: '/dashboard/scolarite/modules',          label: 'Modules',                 module: 'scolarite' },
+      { href: '/dashboard/scolarite/modules/ajouter',  label: 'Ajouter module',          module: 'scolarite', action: 'modifier', menu: false },
+      { href: '/dashboard/em',                         label: 'Éléments de module (EM)', module: 'em' },
+      { href: '/dashboard/em/ajouter',                 label: 'Ajouter EM',              module: 'em', action: 'modifier', menu: false },
     ],
   },
   {
-    key: 'departements', icon: Building2, label: 'Groupes',
+    key: 'departements', icon: LayoutGrid, label: 'Groupes',
     roles: MANAGE, module: 'departements',
     items: [
       { href: '/dashboard/departements',          label: 'Liste des groupes' },
-      { href: '/dashboard/departements/ajouter',  label: 'Ajouter groupe', action: 'modifier' },
-      { href: '/dashboard/departements/affecter', label: 'Affecter étudiants', action: 'modifier' },
+      { href: '/dashboard/departements/ajouter',  label: 'Ajouter groupe', action: 'modifier', menu: false },
+      { href: '/dashboard/departements/affecter', label: 'Affecter les étudiants', action: 'modifier' },
     ],
   },
   {
-    key: 'profs', icon: Users, label: 'Professeurs',
-    roles: MANAGE, module: 'profs',
+    key: 'inscriptions', icon: UserCheck, label: 'Inscriptions',
+    roles: SCOLARITE, module: 'insc_administrative',
     items: [
-      { href: '/dashboard/profs',                    label: 'Liste des professeurs' },
-      { href: '/dashboard/profs/ajouter',            label: 'Ajouter professeur', action: 'modifier' },
-      { href: '/dashboard/profs/historique-statut',  label: 'Historique de statut' },
-    ],
-  },
-  {
-    key: 'em', icon: BookOpen, label: 'EMs',
-    roles: MANAGE, module: 'em',
-    items: [
-      { href: '/dashboard/em',         label: 'Liste des EMs' },
-      { href: '/dashboard/em/ajouter', label: 'Ajouter EM', action: 'modifier' },
-    ],
-  },
-  {
-    key: 'salles', icon: DoorOpen, label: 'Salles',
-    roles: MANAGE, module: 'salles',
-    items: [
-      { href: '/dashboard/salles',         label: 'Liste des salles' },
-      { href: '/dashboard/salles/ajouter', label: 'Ajouter salle', action: 'modifier' },
-    ],
-  },
-  {
-    key: 'banques', icon: Landmark, label: 'Banques',
-    roles: MANAGE, module: 'banques',
-    items: [
-      { href: '/dashboard/banque',         label: 'Liste des banques' },
-      { href: '/dashboard/banque/ajouter', label: 'Ajouter banque', action: 'modifier' },
-    ],
-  },
-  {
-    key: 'comptes', icon: UserCog, label: 'Comptes',
-    roles: ADMIN_ONLY,
-    items: [
-      { href: '/dashboard/comptes/ajouter',     label: 'Ajouter utilisateur' },
-      { href: '/dashboard/comptes',             label: 'Liste utilisateurs' },
-      { href: '/dashboard/comptes/permissions', label: 'Permissions' },
-      { href: '/dashboard/comptes/defaults',    label: 'Defaults par rôle' },
-    ],
-  },
-  {
-    key: 'deblocage', icon: Unlock, label: 'Déblocage',
-    roles: ADMIN_IT,
-    items: [
-      { href: '/dashboard/deblocage', label: 'Débloquer utilisateur' },
-    ],
-  },
-  {
-    key: 'historique', icon: History, label: 'Journal d\'audit',
-    roles: ADMIN_IT,
-    items: [
-      { href: '/dashboard/historique', label: 'Tous les évènements' },
-    ],
-  },
-  // ── Paramétrage ──────────────────────────────────────────────────────────────
-  {
-    key: 'param-institutions', icon: Building2, label: 'Institutions',
-    section: 'Paramétrage', roles: ADMIN_ONLY,
-    items: [
-      { href: '/dashboard/parametres/institutions', label: 'Gérer les institutions' },
-    ],
-  },
-  {
-    key: 'annees', icon: CalendarDays, label: 'Années universitaires',
-    section: 'Paramétrage', roles: ADMIN_ONLY,
-    items: [
-      { href: '/dashboard/parametres/annees',         label: 'Liste des années' },
-      { href: '/dashboard/parametres/annees/ajouter', label: 'Ajouter année' },
-    ],
-  },
-  {
-    key: 'niveaux', icon: Layers, label: 'Niveaux',
-    roles: ADMIN_ONLY,
-    items: [
-      { href: '/dashboard/parametres/niveaux',         label: 'Liste des niveaux' },
-      { href: '/dashboard/parametres/niveaux/ajouter', label: 'Ajouter niveau' },
-    ],
-  },
-  {
-    key: 'semestres', icon: List, label: 'Semestres',
-    roles: ADMIN_ONLY,
-    items: [
-      { href: '/dashboard/parametres/semestres',         label: 'Liste des semestres' },
-      { href: '/dashboard/parametres/semestres/ajouter', label: 'Ajouter semestre' },
-    ],
-  },
-  {
-    key: 'semaines', icon: CalendarRange, label: 'Semaines',
-    roles: ADMIN_ONLY,
-    items: [
-      { href: '/dashboard/parametres/semaines',         label: 'Liste des semaines' },
-      { href: '/dashboard/parametres/semaines/ajouter', label: 'Ajouter semaine' },
-      { href: '/dashboard/parametres/semaines/generer', label: 'Générer les semaines' },
-    ],
-  },
-  // Une entrée à part, et non une section de la page Semaines : cachée là, on
-  // ne la trouvait pas.
-  {
-    key: 'jours-feries', icon: CalendarX2, label: 'Jours fériés',
-    roles: ADMIN_ONLY,
-    items: [
-      { href: '/dashboard/parametres/jours-feries', label: 'Fériés et jours marqués' },
-    ],
-  },
-  {
-    key: 'periodes-reclamation', icon: MessageSquareWarning, label: 'Périodes de réclamation',
-    roles: ADMIN_ONLY,
-    items: [
-      { href: '/dashboard/parametres/periodes-reclamation', label: 'Gérer les périodes' },
-    ],
-  },
-  {
-    key: 'creneaux', icon: Clock, label: 'Créneaux',
-    roles: ADMIN_ONLY,
-    items: [
-      { href: '/dashboard/parametres/creneaux',         label: 'Liste des créneaux' },
-      { href: '/dashboard/parametres/creneaux/ajouter', label: 'Ajouter créneau' },
-    ],
-  },
-  {
-    key: 'seances', icon: Presentation, label: 'Séance',
-    roles: ADMIN_ONLY,
-    items: [
-      { href: '/dashboard/parametres/seances',         label: 'Liste des séances' },
-      { href: '/dashboard/parametres/seances/ajouter', label: 'Ajouter séance' },
-    ],
-  },
-  {
-    key: 'paiements', icon: Coins, label: 'Paiement',
-    roles: ADMIN_ONLY,
-    items: [
-      { href: '/dashboard/parametres/paiements',         label: 'Liste des paiements' },
-      { href: '/dashboard/parametres/paiements/ajouter', label: 'Ajouter paiement' },
-    ],
-  },
-  {
-    key: 'jours', icon: Sun, label: 'Jours',
-    roles: ADMIN_ONLY,
-    items: [
-      { href: '/dashboard/parametres/jours',         label: 'Liste des jours' },
-      { href: '/dashboard/parametres/jours/ajouter', label: 'Ajouter jour' },
-    ],
-  },
-  {
-    key: 'ramadan', icon: Moon, label: 'Ramadan',
-    roles: ADMIN_ONLY,
-    items: [
-      { href: '/dashboard/parametres/ramadan', label: 'Détail' },
-    ],
-  },
-  {
-    key: 'permissions-edt', icon: Shield, label: 'Permissions EDT',
-    roles: ADMIN_ONLY,
-    items: [
-      { href: '/dashboard/parametres/permissions-edt', label: 'Délégation par groupe' },
-    ],
-  },
-  {
-    key: 'permissions-suivi', icon: Unlock, label: 'Rattrapage suivi',
-    roles: ADMIN_ONLY,
-    items: [
-      { href: '/dashboard/parametres/permissions-suivi', label: 'Autoriser un rattrapage' },
-    ],
-  },
-  {
-    key: 'backups', icon: Database, label: 'Sauvegardes BD',
-    roles: ADMIN_ONLY,  // les non-admin avec grant accedent via URL directe
-    items: [
-      { href: '/dashboard/parametres/backups',             label: 'Liste & téléchargement' },
-      { href: '/dashboard/parametres/permissions-backup',  label: 'Utilisateurs autorisés' },
-    ],
-  },
-  // ── Scolarite LMD ────────────────────────────────────────────────────────────
-  {
-    key: 'institution', icon: Globe, label: 'Institution',
-    section: 'Scolarité', roles: ADMIN_ONLY,
-    items: [
-      { href: '/dashboard/institution', label: 'Paramétrage établissement' },
-    ],
-  },
-  {
-    key: 'filieres', icon: GraduationCap, label: 'Filières',
-    roles: SCOLARITE, module: 'scolarite_filieres',
-    items: [
-      { href: '/dashboard/scolarite/filieres',         label: 'Liste des filières' },
-      { href: '/dashboard/scolarite/filieres/ajouter', label: 'Ajouter filière', action: 'modifier' },
-    ],
-  },
-  {
-    key: 'departements-academiques', icon: Landmark, label: 'Départements',
-    roles: SCOLARITE, module: 'scolarite',
-    items: [
-      { href: '/dashboard/scolarite/departements', label: 'Liste des départements' },
-    ],
-  },
-  {
-    key: 'modules', icon: BookOpen, label: 'Modules',
-    roles: SCOLARITE, module: 'scolarite',
-    items: [
-      { href: '/dashboard/scolarite/modules',         label: 'Liste des modules' },
-      { href: '/dashboard/scolarite/modules/ajouter', label: 'Ajouter module', action: 'modifier' },
+      { href: '/dashboard/inscriptions/nouvelle',         label: 'Nouvelle inscription',         module: 'insc_administrative', action: 'modifier' },
+      { href: '/dashboard/inscriptions/preinscriptions',  label: 'Pré-inscriptions',             module: 'insc_administrative', action: 'voir' },
+      { href: '/dashboard/inscriptions/administratives',  label: 'Inscriptions administratives', module: 'insc_administrative', action: 'voir' },
+      { href: '/dashboard/inscriptions/pedagogiques',     label: 'Inscriptions pédagogiques',    module: 'insc_pedagogique',    action: 'voir' },
+      { href: '/dashboard/inscriptions/derogations',      label: 'Dérogations',                  module: 'insc_derogation',     action: 'voir' },
+      { href: '/dashboard/inscriptions/grilles-frais',    label: 'Grille tarifaire',             module: 'insc_grille_frais',   action: 'voir' },
     ],
   },
   {
@@ -384,31 +222,27 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: '/dashboard/scolarite/etudiants/comptes',  label: 'Comptes portail' },
     ],
   },
+  // Les deux groupes gardent `module: 'eval_saisie'` : c'est le droit qui
+  // ouvrait l'ancien groupe « Évaluations », il ouvre donc encore chacun d'eux.
   {
-    key: 'inscriptions', icon: UserCheck, label: 'Inscriptions',
-    roles: SCOLARITE, module: 'insc_administrative',
-    items: [
-      { href: '/dashboard/inscriptions/nouvelle',         label: 'Nouvelle inscription', module: 'insc_administrative', action: 'modifier' },
-      { href: '/dashboard/inscriptions/preinscriptions',  label: 'Pré-inscriptions',     module: 'insc_administrative', action: 'voir' },
-      { href: '/dashboard/inscriptions/administratives',  label: 'Inscriptions admin.',  module: 'insc_administrative', action: 'voir' },
-      { href: '/dashboard/inscriptions/pedagogiques',     label: 'Inscriptions pédag.',  module: 'insc_pedagogique',    action: 'voir' },
-      { href: '/dashboard/inscriptions/derogations',      label: 'Dérogations',          module: 'insc_derogation',     action: 'voir' },
-      { href: '/dashboard/inscriptions/grilles-frais',    label: 'Grille tarifaire',     module: 'insc_grille_frais',   action: 'voir' },
-    ],
-  },
-  {
-    key: 'evaluations', icon: ClipboardList, label: 'Évaluations',
+    key: 'evaluations', icon: ClipboardList, label: 'Notes et examens',
     roles: EVALUATIONS, module: 'eval_saisie',
     items: [
       { href: '/dashboard/evaluations/sessions',              label: 'Sessions',              module: 'eval_saisie',     action: 'voir' },
-      { href: '/dashboard/evaluations/notes',                 label: 'Consultation des notes',module: 'eval_saisie',     action: 'voir' },
       { href: '/dashboard/evaluations/notes/saisie',          label: 'Saisie des notes',      module: 'eval_saisie',     action: 'modifier' },
       { href: '/dashboard/evaluations/notes/saisie-anonymat', label: 'Saisie par anonymat',   module: 'eval_anonymat',   action: 'modifier' },
-      { href: '/dashboard/evaluations/deliberations',         label: 'Délibérations',         module: 'delib_pv',        action: 'voir' },
-      { href: '/dashboard/evaluations/rachats',               label: 'Rachats jury',          module: 'delib_rachat',    action: 'modifier' },
+      { href: '/dashboard/evaluations/notes',                 label: 'Consultation des notes',module: 'eval_saisie',     action: 'voir' },
+      { href: '/dashboard/evaluations/anonymat',              label: 'Anonymat',              module: 'eval_anonymat',   action: 'voir' },
       { href: '/dashboard/evaluations/emargement',            label: 'Émargement',            module: 'eval_emargement', action: 'voir' },
       { href: '/dashboard/evaluations/collecte-notes',        label: 'Collecte de notes',     module: 'eval_collecte',   action: 'modifier' },
-      { href: '/dashboard/evaluations/anonymat',              label: 'Anonymat',              module: 'eval_anonymat',   action: 'voir' },
+    ],
+  },
+  {
+    key: 'jury', icon: Gavel, label: 'Jury et délibérations',
+    roles: EVALUATIONS, module: 'eval_saisie',
+    items: [
+      { href: '/dashboard/evaluations/deliberations', label: 'Délibérations', module: 'delib_pv',     action: 'voir' },
+      { href: '/dashboard/evaluations/rachats',       label: 'Rachats jury',  module: 'delib_rachat', action: 'modifier' },
     ],
   },
   {
@@ -419,13 +253,6 @@ export const NAV_GROUPS: NavGroup[] = [
       // La suite immédiate du même travail : une fois les progressions
       // exécutées, les étudiants restent à rattacher à un groupe de l'année.
       { href: '/dashboard/scolarite/rentree',      label: 'Préparer la rentrée',   module: 'insc_progression', action: 'modifier' },
-    ],
-  },
-  {
-    key: 'ponderation-calcul', icon: Scale, label: 'Pondération de calcul',
-    roles: SCOLARITE, module: 'eval_saisie',
-    items: [
-      { href: '/dashboard/evaluations/ponderation', label: 'Paramètres de pondération', module: 'eval_saisie', action: 'modifier' },
     ],
   },
   {
@@ -448,8 +275,136 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    key: 'reclamations-admin', icon: AlertCircle, label: 'Réclamations',
+    roles: SCOLARITE, module: 'reclamations',
+    items: [{ href: '/dashboard/reclamations', label: 'Gestion réclamations' }],
+  },
+  // ── Enseignants & paie ───────────────────────────────────────────────────────
+  {
+    key: 'profs', icon: Contact, label: 'Professeurs',
+    section: 'Enseignants & paie', roles: MANAGE, module: 'profs',
+    items: [
+      { href: '/dashboard/profs',                    label: 'Liste des professeurs' },
+      { href: '/dashboard/profs/ajouter',            label: 'Ajouter professeur', action: 'modifier', menu: false },
+      { href: '/dashboard/profs/historique-statut',  label: 'Historique de statut' },
+    ],
+  },
+  {
+    key: 'vacations', icon: Banknote, label: 'Vacations',
+    roles: MANAGE, module: 'vac_saisie',
+    items: [
+      { href: '/dashboard/payement/ajouter',     label: 'Ajouter vacation',          module: 'vac_saisie',     action: 'modifier' },
+      { href: '/dashboard/payement/liste',       label: 'Liste des vacations',       module: 'vac_saisie',     action: 'voir' },
+      { href: '/dashboard/payement/fiches',      label: 'Fiches vacataires',         module: 'vac_saisie',     action: 'voir' },
+      { href: '/dashboard/payement/etat',        label: 'État de vacation',          module: 'vac_validation', action: 'voir' },
+      { href: '/dashboard/payement/details',     label: 'Détails de vacation',       module: 'vac_validation', action: 'voir' },
+      { href: '/dashboard/payement/heures-supp', label: 'Heures supp. permanents',   module: 'vac_validation', action: 'voir' },
+      { href: '/dashboard/payement/attestation', label: 'Attestation',               module: 'vac_paiement',   action: 'modifier' },
+    ],
+  },
+  // ── Référentiels ─────────────────────────────────────────────────────────────
+  {
+    // Les périodes de réclamation sont ici, et non en Administration comme à
+    // SIGA-PRIVE : ce sont des fenêtres de dates, comme les semaines et les
+    // jours fériés.
+    key: 'calendrier', icon: CalendarRange, label: 'Calendrier',
+    section: 'Référentiels', roles: ADMIN_ONLY,
+    items: [
+      { href: '/dashboard/parametres/annees',                label: 'Années universitaires' },
+      { href: '/dashboard/parametres/annees/ajouter',        label: 'Ajouter année',     menu: false },
+      { href: '/dashboard/parametres/semestres',             label: 'Semestres' },
+      { href: '/dashboard/parametres/semestres/ajouter',     label: 'Ajouter semestre',  menu: false },
+      { href: '/dashboard/parametres/semaines',              label: 'Semaines' },
+      { href: '/dashboard/parametres/semaines/ajouter',      label: 'Ajouter semaine',   menu: false },
+      { href: '/dashboard/parametres/semaines/generer',      label: 'Générer les semaines' },
+      { href: '/dashboard/parametres/jours-feries',          label: 'Jours fériés' },
+      { href: '/dashboard/parametres/ramadan',               label: 'Ramadan' },
+      { href: '/dashboard/parametres/periodes-reclamation',  label: 'Périodes de réclamation' },
+    ],
+  },
+  {
+    key: 'grille-horaire', icon: Clock, label: 'Grille horaire',
+    roles: ADMIN_ONLY,
+    items: [
+      { href: '/dashboard/parametres/jours',            label: 'Jours' },
+      { href: '/dashboard/parametres/jours/ajouter',    label: 'Ajouter jour',    menu: false },
+      { href: '/dashboard/parametres/creneaux',         label: 'Créneaux' },
+      { href: '/dashboard/parametres/creneaux/ajouter', label: 'Ajouter créneau', menu: false },
+      { href: '/dashboard/parametres/seances',          label: 'Types de séance' },
+      { href: '/dashboard/parametres/seances/ajouter',  label: 'Ajouter séance',  menu: false },
+    ],
+  },
+  {
+    key: 'salles', icon: DoorOpen, label: 'Salles',
+    roles: MANAGE, module: 'salles',
+    items: [
+      { href: '/dashboard/salles',         label: 'Liste des salles' },
+      { href: '/dashboard/salles/ajouter', label: 'Ajouter salle', action: 'modifier', menu: false },
+    ],
+  },
+  {
+    key: 'paiements', icon: Coins, label: 'Paiements',
+    roles: MANAGE,
+    items: [
+      { href: '/dashboard/parametres/paiements',         label: 'Types de paiement', roles: ADMIN_ONLY },
+      { href: '/dashboard/parametres/paiements/ajouter', label: 'Ajouter paiement',  roles: ADMIN_ONLY, menu: false },
+      { href: '/dashboard/banque',                       label: 'Banques',           module: 'banques' },
+      { href: '/dashboard/banque/ajouter',               label: 'Ajouter banque',    module: 'banques', action: 'modifier', menu: false },
+    ],
+  },
+  {
+    key: 'ponderation-calcul', icon: Scale, label: 'Pondération de calcul',
+    roles: SCOLARITE, module: 'eval_saisie',
+    items: [
+      { href: '/dashboard/evaluations/ponderation', label: 'Paramètres de pondération', module: 'eval_saisie', action: 'modifier' },
+    ],
+  },
+  // ── Administration ───────────────────────────────────────────────────────────
+  {
+    key: 'comptes', icon: UserCog, label: 'Comptes et droits',
+    section: 'Administration', roles: ADMIN_IT,
+    items: [
+      { href: '/dashboard/comptes',                     label: 'Utilisateurs',            roles: ADMIN_ONLY },
+      { href: '/dashboard/comptes/ajouter',             label: 'Ajouter utilisateur',     roles: ADMIN_ONLY, menu: false },
+      { href: '/dashboard/comptes/permissions',         label: 'Permissions',             roles: ADMIN_ONLY },
+      { href: '/dashboard/comptes/defaults',            label: 'Droits par rôle',         roles: ADMIN_ONLY },
+      { href: '/dashboard/parametres/permissions-edt',  label: 'Délégation EDT',          roles: ADMIN_ONLY },
+      { href: '/dashboard/parametres/permissions-suivi',label: 'Autoriser un rattrapage', roles: ADMIN_ONLY },
+      { href: '/dashboard/deblocage',                   label: 'Débloquer un compte',     roles: ADMIN_IT },
+    ],
+  },
+  {
+    // « Institution » et « Institutions » se côtoyaient dans deux sections :
+    // la fiche de l'établissement et la liste des institutions, enfin nommées
+    // de façon à ne plus se confondre.
+    key: 'etablissement', icon: Landmark, label: 'Établissement',
+    roles: ADMIN_ONLY,
+    items: [
+      { href: '/dashboard/institution',             label: "Fiche de l'établissement" },
+      { href: '/dashboard/parametres/institutions', label: 'Institutions' },
+    ],
+  },
+  {
+    key: 'historique', icon: History, label: 'Journal d\'audit',
+    roles: ADMIN_IT,
+    items: [
+      { href: '/dashboard/historique', label: 'Tous les évènements' },
+    ],
+  },
+  {
+    key: 'backups', icon: Database, label: 'Sauvegardes',
+    roles: ADMIN_ONLY,  // les non-admin avec grant accedent via URL directe
+    items: [
+      { href: '/dashboard/parametres/backups',             label: 'Liste & téléchargement' },
+      { href: '/dashboard/parametres/permissions-backup',  label: 'Utilisateurs autorisés' },
+    ],
+  },
+  // ── Épinglé en bas de la barre, hors des sections (comme SIGA-PRIVE) ──────────
+  // La cloche du haut de l'écran mène à la même page ; ici, elle reste à portée
+  // sans occuper une place dans l'arbre.
+  {
     key: 'notifications', icon: BellRing, label: 'Notifications',
-    roles: ALL, module: 'notifications',
+    roles: ALL, module: 'notifications', epingle: true,
     items: [
       { href: '/dashboard/notifications', label: 'Toutes les notifications' },
     ],
@@ -543,11 +498,5 @@ export const NAV_GROUPS: NavGroup[] = [
     key: 'ens-vacations', icon: Banknote, label: 'Vacations',
     roles: ENSEIGNANT_ONLY,
     items: [{ href: '/dashboard/enseignant/vacations', label: 'Vacations' }],
-  },
-  // ── Staff : gestion réclamations ────────────────────────────────────────────
-  {
-    key: 'reclamations-admin', icon: AlertCircle, label: 'Réclamations',
-    section: 'Scolarité', roles: SCOLARITE, module: 'reclamations',
-    items: [{ href: '/dashboard/reclamations', label: 'Gestion réclamations' }],
   },
 ];
