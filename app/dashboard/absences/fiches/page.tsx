@@ -36,6 +36,17 @@ interface Semestre    {
   type_semestre: string; niveau_semestre: number; niveau_nom: string;
 }
 interface Etudiant { id: number; matricule: string; nom: string; genre: string; }
+/** Un étudiant d'un AUTRE groupe, inscrit à cet élément en dette. */
+interface EtudiantDette extends Etudiant { groupe: string; }
+
+/** La liste d'appel d'une séance, telle que le serveur la calcule.
+ *  Même source que le PDF — voir `apps/absence/liste_appel.py`. */
+interface ListeAppel {
+  source:              'inscriptions' | 'groupe';
+  etudiants:           Etudiant[];
+  dettes:              EtudiantDette[];
+  liste_non_verifiee:  boolean;
+}
 
 interface SuivieRow {
   id:          number;
@@ -50,12 +61,18 @@ interface SuivieRow {
   numero_semaine: number;
   date_suivie: string | null;
   departement: number | null;
+  /** L'élément : c'est lui qui dit QUI suit la séance, pas le seul groupe. */
+  em:          number | null;
 }
 
 interface FicheGroup {
-  suivi:     SuivieRow;
-  etudiants: Etudiant[];
-  depNom:    string;
+  suivi:      SuivieRow;
+  etudiants:  Etudiant[];
+  /** Inscrits à l'élément mais venus d'un autre groupe. */
+  dettes:     EtudiantDette[];
+  /** Les inscriptions à cet élément n'ont pas été saisies : liste du groupe. */
+  nonVerifiee: boolean;
+  depNom:     string;
 }
 
 const JOURS_ORDER: Record<string, number> = {
@@ -167,17 +184,14 @@ export default function FichesPresencePage() {
       });
       if (selDepId) params.set('departement', selDepId);
 
-      const [suiviesRes, etusMap] = await Promise.all([
-        apiFetch<{ results: SuivieRow[] } | SuivieRow[]>(`/api/v1/suivi/suivies/?${params}`),
-        selDepId
-          ? apiFetch<{ results: Etudiant[] } | Etudiant[]>(
-              `/api/v1/absences/etudiants/?departement=${selDepId}&page_size=500`,
-            ).then(r => {
-              const l = Array.isArray(r) ? r : r.results;
-              return new Map([[Number(selDepId), l]]);
-            })
-          : Promise.resolve(new Map<number, Etudiant[]>()),
-      ]);
+      const suiviesRes = await apiFetch<{ results: SuivieRow[] } | SuivieRow[]>(
+        `/api/v1/suivi/suivies/?${params}`);
+      // Une liste par SÉANCE — groupe ET élément — et non par groupe. Un
+      // étudiant qui a déjà validé l'élément n'a rien à faire sur la fiche ;
+      // un étudiant d'un autre groupe qui le suit en dette doit y figurer.
+      // Le serveur tranche (`apps/absence/liste_appel.py`), le PDF lit la même
+      // règle : deux implémentations séparées auraient dérivé.
+      const listes = new Map<string, ListeAppel>();
 
       const suivies = Array.isArray(suiviesRes) ? suiviesRes : suiviesRes.results;
       // Aligné sur le PDF : on exclut les séances sans type de séance OU sans EM
@@ -199,25 +213,30 @@ export default function FichesPresencePage() {
         seen.add(key);
 
         const depId = s.departement ?? null;
-        let etudiants: Etudiant[] = [];
+        let liste: ListeAppel = { source: 'groupe', etudiants: [], dettes: [],
+                                  liste_non_verifiee: true };
         if (depId) {
-          if (etusMap.has(depId)) {
-            etudiants = etusMap.get(depId)!;
+          const cle = `${depId}|${s.em ?? ''}`;
+          if (listes.has(cle)) {
+            liste = listes.get(cle)!;
           } else {
             try {
-              const res = await apiFetch<{ results: Etudiant[] } | Etudiant[]>(
-                `/api/v1/absences/etudiants/?departement=${depId}&page_size=500`,
-              );
-              etudiants = Array.isArray(res) ? res : res.results;
-              etusMap.set(depId, etudiants);
-            } catch { etudiants = []; }
+              const p = new URLSearchParams({ departement: String(depId),
+                                              annee_universitaire: annee });
+              if (s.em) p.set('em', String(s.em));
+              liste = await apiFetch<ListeAppel>(
+                `/api/v1/absences/presences/liste-appel/?${p}`);
+              listes.set(cle, liste);
+            } catch { /* liste vide : l'écran le dit déjà */ }
           }
         }
 
         groups.push({
-          suivi:     s,
-          etudiants: etudiants,
-          depNom:    departements.find(d => d.id === depId)?.nom ?? s.dept_nom ?? '—',
+          suivi:       s,
+          etudiants:   liste.etudiants,
+          dettes:      liste.dettes,
+          nonVerifiee: liste.liste_non_verifiee,
+          depNom:      departements.find(d => d.id === depId)?.nom ?? s.dept_nom ?? '—',
         });
       }
 
@@ -421,7 +440,7 @@ export default function FichesPresencePage() {
                   </div>
 
                   {/* Liste étudiants */}
-                  {fiche.etudiants.length === 0 ? (
+                  {fiche.etudiants.length === 0 && fiche.dettes.length === 0 ? (
                     <div className="px-5 py-8 text-center">
                       <Users size={24} className="mx-auto mb-2 text-iss-gray/30" />
                       <p className="text-xs text-iss-gray">Aucun étudiant inscrit dans ce groupe.</p>
@@ -449,9 +468,35 @@ export default function FichesPresencePage() {
                                 <td className="text-center">&nbsp;</td>
                               </tr>
                             ))}
+                            {/* Les dettes, à la suite et NOMMÉES comme telles :
+                                un nom venu d'ailleurs qu'on prendrait pour un
+                                camarade de promotion ferait douter de la liste. */}
+                            {fiche.dettes.map((etu, ei) => (
+                              <tr key={`d-${etu.id}`}
+                                  className={(fiche.etudiants.length + ei) % 2 === 0 ? '' : 'bg-gray-50/50'}>
+                                <td className="text-center"><code className="text-xs font-bold">{etu.matricule}</code></td>
+                                <td className="font-medium text-iss-dark">
+                                  {etu.nom}
+                                  <span className="ml-2 text-[11px] font-normal text-iss-gray">
+                                    — dette · {etu.groupe}
+                                  </span>
+                                </td>
+                                <td className="text-center">&nbsp;</td>
+                              </tr>
+                            ))}
                           </tbody>
                         </table>
                       </div>
+
+                      {/* Inscriptions non saisies : la liste est celle du groupe
+                          entier. On le dit, plutôt que de la laisser passer pour
+                          une liste vérifiée. */}
+                      {fiche.nonVerifiee && (
+                        <p className="px-5 pt-2 text-[11px] italic text-iss-gray">
+                          Liste du groupe entier : les inscriptions à cet élément
+                          n&apos;ont pas été saisies.
+                        </p>
+                      )}
 
                       {/* Signature unique — miroir du PDF (prof, ou surveillant si DS/ER/EF) */}
                       <div className="px-5 py-4 border-t border-gray-100" style={{ width: '40%' }}>
