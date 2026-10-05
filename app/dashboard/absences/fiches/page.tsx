@@ -63,23 +63,35 @@ function lignesDeFiche(f: { etudiants: Etudiant[]; rattaches: EtudiantRattache[]
                             dettes: EtudiantDette[] }): LigneFiche[] {
   return [
     ...f.etudiants.map(etu => ({ cle: `e-${etu.id}`, etu, mention: null })),
-    ...f.rattaches.map(etu => ({ cle: `r-${etu.id}`, etu,
-                                 mention: `rattaché·e · inscrit·e en ${etu.filiere}` })),
+    // Un rattaché prend sa place sans mention (demande du 05/10/2026).
+    ...f.rattaches.map(etu => ({ cle: `r-${etu.id}`, etu, mention: null })),
     ...f.dettes.map(etu => ({ cle: `d-${etu.id}`, etu, mention: `dette · ${etu.groupe}` })),
   ].sort((x, y) => compareMatricules(x.etu.matricule, y.etu.matricule));
 }
 
-/** La liste d'appel d'une séance, telle que le serveur la calcule.
- *  Même source que le PDF — voir `apps/absence/liste_appel.py`. */
-interface ListeAppel {
-  /** « L1 G1 » et non « G1 » — calculé côté serveur, le PDF lit le même. */
-  groupe_libelle:      string;
-  filiere:             string;
-  source:              'inscriptions' | 'groupe';
-  etudiants:           Etudiant[];
-  rattaches:           EtudiantRattache[];
-  dettes:              EtudiantDette[];
-  liste_non_verifiee:  boolean;
+/** Une fiche telle que le serveur la calcule — le PDF imprime les mêmes
+ *  (`apps/absence/fiches.py`). Un CM y est UNE fiche pour les groupes réunis. */
+interface FicheServeur {
+  id:              number;
+  groupes:         string[];
+  cm_commun:       boolean;
+  /** « L1 G1 », ou « L3 G1 + L3 G2 » pour un CM réuni. */
+  groupe_libelle:  string;
+  dep_nom:         string;
+  filiere:         string;
+  date_seance:     string | null;
+  jour:            string;
+  creneau_label:   string;
+  type_seance:     string;
+  numero_semaine:  number;
+  em_code:         string;
+  em_intitule:     string;
+  prof_nom:        string;
+  salle_nom:       string;
+  etudiants:       Etudiant[];
+  rattaches:       EtudiantRattache[];
+  dettes:          EtudiantDette[];
+  liste_non_verifiee: boolean;
 }
 
 interface SuivieRow {
@@ -94,9 +106,6 @@ interface SuivieRow {
   dept_nom:    string | null;
   numero_semaine: number;
   date_suivie: string | null;
-  departement: number | null;
-  /** L'élément : c'est lui qui dit QUI suit la séance, pas le seul groupe. */
-  em:          number | null;
 }
 
 interface FicheGroup {
@@ -113,10 +122,6 @@ interface FicheGroup {
   libelle:    string;
   filiere:    string;
 }
-
-const JOURS_ORDER: Record<string, number> = {
-  Lundi: 1, Mardi: 2, Mercredi: 3, Jeudi: 4, Vendredi: 5, Samedi: 6,
-};
 
 export default function FichesPresencePage() {
   const user  = getStoredUser();
@@ -219,70 +224,29 @@ export default function FichesPresencePage() {
       const params = new URLSearchParams({
         annee_universitaire: annee,
         numero_semaine:      selSemaine,
-        page_size:           '500',
       });
       if (selDepId) params.set('departement', selDepId);
 
-      const suiviesRes = await apiFetch<{ results: SuivieRow[] } | SuivieRow[]>(
-        `/api/v1/suivi/suivies/?${params}`);
-      // Une liste par SÉANCE — groupe ET élément — et non par groupe. Un
-      // étudiant qui a déjà validé l'élément n'a rien à faire sur la fiche ;
-      // un étudiant d'un autre groupe qui le suit en dette doit y figurer.
-      // Le serveur tranche (`apps/absence/liste_appel.py`), le PDF lit la même
-      // règle : deux implémentations séparées auraient dérivé.
-      const listes = new Map<string, ListeAppel>();
-
-      const suivies = Array.isArray(suiviesRes) ? suiviesRes : suiviesRes.results;
-      // Aligné sur le PDF : on exclut les séances sans type de séance OU sans EM
-      // (Sport, Instruction militaire, lignes vides → pas de fiche).
-      const filtered = suivies.filter(s => s.type_seance_label && s.em_intitule);
-
-      const groups: FicheGroup[] = [];
-      const seen = new Set<string>();
-      const sorted = [...filtered].sort((a, b) => {
-        const jA = JOURS_ORDER[a.jour_label ?? ''] ?? 9;
-        const jB = JOURS_ORDER[b.jour_label ?? ''] ?? 9;
-        if (jA !== jB) return jA - jB;
-        return (a.creneau_label ?? '').localeCompare(b.creneau_label ?? '');
-      });
-
-      for (const s of sorted) {
-        const key = `${s.jour_label}|${s.creneau_label}|${s.type_seance_label}|${s.departement}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-
-        const depId = s.departement ?? null;
-        let liste: ListeAppel = { groupe_libelle: '', filiere: '', source: 'groupe',
-                                  etudiants: [], rattaches: [], dettes: [], liste_non_verifiee: true };
-        if (depId) {
-          const cle = `${depId}|${s.em ?? ''}`;
-          if (listes.has(cle)) {
-            liste = listes.get(cle)!;
-          } else {
-            try {
-              const p = new URLSearchParams({ departement: String(depId),
-                                              annee_universitaire: annee });
-              if (s.em) p.set('em', String(s.em));
-              liste = await apiFetch<ListeAppel>(
-                `/api/v1/absences/presences/liste-appel/?${p}`);
-              listes.set(cle, liste);
-            } catch { /* liste vide : l'écran le dit déjà */ }
-          }
-        }
-
-        groups.push({
-          suivi:       s,
-          etudiants:   liste.etudiants,
-          rattaches:   liste.rattaches ?? [],
-          dettes:      liste.dettes,
-          nonVerifiee: liste.liste_non_verifiee,
-          depNom:      departements.find(d => d.id === depId)?.nom ?? s.dept_nom ?? '—',
-          libelle:     liste.groupe_libelle,
-          filiere:     liste.filiere,
-        });
-      }
-
-      return groups;
+      // Le serveur fait les fiches, le PDF lit le même calcul : qui figure sur
+      // chaque fiche (`liste_appel`), et la réunion des groupes d'un CM en
+      // une seule fiche. Deux implémentations séparées auraient dérivé.
+      const res = await apiFetch<FicheServeur[]>(
+        `/api/v1/absences/presences/fiches/?${params}`);
+      return res.map(f => ({
+        suivi: {
+          id: f.id, jour_label: f.jour, creneau_label: f.creneau_label,
+          type_seance_label: f.type_seance, prof_nom: f.prof_nom,
+          em_intitule: f.em_intitule, em_code: f.em_code, salle_nom: f.salle_nom,
+          dept_nom: f.dep_nom, numero_semaine: f.numero_semaine, date_suivie: f.date_seance,
+        },
+        etudiants:   f.etudiants,
+        rattaches:   f.rattaches ?? [],
+        dettes:      f.dettes,
+        nonVerifiee: f.liste_non_verifiee,
+        depNom:      f.dep_nom || '—',
+        libelle:     f.groupe_libelle,
+        filiere:     f.filiere,
+      }));
     },
     onError: (err: unknown) => setError(err instanceof Error ? err.message : 'Erreur de chargement.'),
   });
@@ -468,7 +432,7 @@ export default function FichesPresencePage() {
                         <span>{fiche.suivi.creneau_label || '—'}</span>
                       </div>
                       <div className="flex gap-2">
-                        <span className="font-semibold whitespace-nowrap">Professeur :</span>
+                        <span className="font-semibold whitespace-nowrap">Enseignant :</span>
                         <span>{fiche.suivi.prof_nom || '—'}</span>
                       </div>
                       <div className="flex gap-2 sm:col-span-2">
@@ -545,7 +509,7 @@ export default function FichesPresencePage() {
                       {/* Signature unique — miroir du PDF (prof, ou surveillant si DS/ER/EF) */}
                       <div className="px-5 py-4 border-t border-gray-100" style={{ width: '40%' }}>
                         <p className="text-xs text-iss-gray mb-6">
-                          {surv ? 'Nom et Signature du surveillant' : 'Signature du professeur'}
+                          {surv ? 'Nom et Signature du surveillant' : "Signature de l'enseignant"}
                         </p>
                         <div className="h-px bg-gray-300" />
                       </div>
