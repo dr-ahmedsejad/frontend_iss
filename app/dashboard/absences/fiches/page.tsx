@@ -42,6 +42,33 @@ interface EtudiantDette extends Etudiant { groupe: string; }
  *  planification : il suit les cours sans être inscrit aux éléments. */
 interface EtudiantRattache extends Etudiant { filiere: string; }
 
+/** Ordre CROISSANT des matricules, en NOMBRE (« 9999 » avant « 10000 ») ; un
+ *  matricule non numérique passe après. Même règle que le PDF :
+ *  `ordre_matricule`, apps/absence/liste_appel.py. */
+function compareMatricules(a: string, b: string): number {
+  const ta = (a ?? '').trim(), tb = (b ?? '').trim();
+  const na = /^\d+$/.test(ta), nb = /^\d+$/.test(tb);
+  if (na && nb) return Number(ta) - Number(tb);
+  if (na !== nb) return na ? -1 : 1;
+  return ta.localeCompare(tb);
+}
+
+/** Une ligne de la fiche : l'étudiant, et la mention qui dit d'où il vient. */
+interface LigneFiche { cle: string; etu: Etudiant; mention: string | null; }
+
+/** UNE liste par matricule croissant — celle qu'on lit en faisant l'appel.
+ *  Rattachés et dettes y prennent leur place au lieu d'être rejetés en fin de
+ *  liste (le 05/10/2026 : « …255045, 24603, 24616… »). */
+function lignesDeFiche(f: { etudiants: Etudiant[]; rattaches: EtudiantRattache[];
+                            dettes: EtudiantDette[] }): LigneFiche[] {
+  return [
+    ...f.etudiants.map(etu => ({ cle: `e-${etu.id}`, etu, mention: null })),
+    ...f.rattaches.map(etu => ({ cle: `r-${etu.id}`, etu,
+                                 mention: `rattaché·e · inscrit·e en ${etu.filiere}` })),
+    ...f.dettes.map(etu => ({ cle: `d-${etu.id}`, etu, mention: `dette · ${etu.groupe}` })),
+  ].sort((x, y) => compareMatricules(x.etu.matricule, y.etu.matricule));
+}
+
 /** La liste d'appel d'une séance, telle que le serveur la calcule.
  *  Même source que le PDF — voir `apps/absence/liste_appel.py`. */
 interface ListeAppel {
@@ -482,42 +509,21 @@ export default function FichesPresencePage() {
                             </tr>
                           </thead>
                           <tbody>
-                            {fiche.etudiants.map((etu, ei) => (
-                              <tr key={etu.id} className={ei % 2 === 0 ? '' : 'bg-gray-50/50'}>
-                                <td className="text-center"><code className="text-xs font-bold">{etu.matricule}</code></td>
-                                <td className="font-medium text-iss-dark">{etu.nom}</td>
-                                <td className="text-center">&nbsp;</td>
-                              </tr>
-                            ))}
-                            {/* Les rattachés : du groupe, mais inscrits dans une
-                                autre filière. Leur filière est écrite, comme le
-                                groupe d'une dette, pour qu'on ne les prenne pas
-                                pour une erreur de liste. */}
-                            {fiche.rattaches.map((etu, ei) => (
-                              <tr key={`r-${etu.id}`}
-                                  className={(fiche.etudiants.length + ei) % 2 === 0 ? '' : 'bg-gray-50/50'}>
+                            {/* Une seule liste, par matricule croissant. Les
+                                rattachés (du groupe, inscrits dans une autre
+                                filière) et les dettes (d'un autre groupe) y sont
+                                NOMMÉS comme tels : un nom venu d'ailleurs qu'on
+                                prendrait pour une erreur ferait douter de la liste. */}
+                            {lignesDeFiche(fiche).map(({ cle, etu, mention }, ei) => (
+                              <tr key={cle} className={ei % 2 === 0 ? '' : 'bg-gray-50/50'}>
                                 <td className="text-center"><code className="text-xs font-bold">{etu.matricule}</code></td>
                                 <td className="font-medium text-iss-dark">
                                   {etu.nom}
-                                  <span className="ml-2 text-[11px] font-normal text-iss-gray">
-                                    — rattaché·e · inscrit·e en {etu.filiere}
-                                  </span>
-                                </td>
-                                <td className="text-center">&nbsp;</td>
-                              </tr>
-                            ))}
-                            {/* Les dettes, à la suite et NOMMÉES comme telles :
-                                un nom venu d'ailleurs qu'on prendrait pour un
-                                camarade de promotion ferait douter de la liste. */}
-                            {fiche.dettes.map((etu, ei) => (
-                              <tr key={`d-${etu.id}`}
-                                  className={(fiche.etudiants.length + fiche.rattaches.length + ei) % 2 === 0 ? '' : 'bg-gray-50/50'}>
-                                <td className="text-center"><code className="text-xs font-bold">{etu.matricule}</code></td>
-                                <td className="font-medium text-iss-dark">
-                                  {etu.nom}
-                                  <span className="ml-2 text-[11px] font-normal text-iss-gray">
-                                    — dette · {etu.groupe}
-                                  </span>
+                                  {mention && (
+                                    <span className="ml-2 text-[11px] font-normal text-iss-gray">
+                                      — {mention}
+                                    </span>
+                                  )}
                                 </td>
                                 <td className="text-center">&nbsp;</td>
                               </tr>
