@@ -413,10 +413,11 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     key: 'portail-en-ligne', icon: Globe, label: 'Portail en ligne',
-    roles: ADMIN_IT,
+    // Le DE traite les contestations des séances de ses groupes (serveur).
+    roles: [...ADMIN_IT, 'DE'],
     items: [
       { href: '/dashboard/suivi/reclamations-seance',    label: 'Réclamations séances' },
-      { href: '/dashboard/evaluations/saisie-en-ligne',  label: 'Saisie de notes en ligne' },
+      { href: '/dashboard/evaluations/saisie-en-ligne',  label: 'Saisie de notes en ligne', roles: ADMIN_IT },
     ],
   },
   // ── Épinglé en bas de la barre, hors des sections (comme SIGA-PRIVE) ──────────
