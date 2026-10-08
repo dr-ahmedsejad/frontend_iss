@@ -219,6 +219,9 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/dashboard/scolarite/etudiants/chercher', label: 'Chercher un étudiant' },
       { href: '/dashboard/scolarite/etudiants',          label: 'Liste des étudiants' },
+      // Dépôt groupé, chaque photo nommée par le matricule : le droit de
+      // MODIFIER les étudiants, comme le serveur (apps/absence/photos.py).
+      { href: '/dashboard/scolarite/etudiants/photos',   label: 'Photos des étudiants', action: 'modifier' },
       { href: '/dashboard/scolarite/etudiants/comptes',  label: 'Comptes portail' },
     ],
   },
