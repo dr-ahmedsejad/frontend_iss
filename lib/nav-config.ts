@@ -274,6 +274,8 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/dashboard/documents/generer',            label: 'Générer document',    module: 'doc_attestation', action: 'modifier' },
       { href: '/dashboard/documents/consultation-notes', label: 'Consulter les notes', module: 'doc_releve',       action: 'voir' },
+      // Tous les relevés d'un étudiant en un seul PDF (apps/documents/releves_etudiant.py).
+      { href: '/dashboard/documents/releves-etudiant',  label: "Relevés d'étudiants",  module: 'doc_releve',     action: 'modifier' },
       { href: '/dashboard/documents/registre',           label: 'Registre diplômes',   module: 'doc_registre',     action: 'voir' },
     ],
   },
