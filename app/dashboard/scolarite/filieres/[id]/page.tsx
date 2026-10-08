@@ -87,6 +87,10 @@ export default function FilierePage() {
 
   function handleSave(e: React.FormEvent) {
     e.preventDefault();
+    if (deptAcad === '') {
+      setErrors({ departement_academique: 'Le département académique est obligatoire.' });
+      return;
+    }
     setErrors({});
     update.mutate({
       id,
@@ -96,7 +100,7 @@ export default function FilierePage() {
         niveau_debut: niveauDebut,
         niveau_fin:   niveauFin,
         credits_total: creditsTotal, est_active: estActive, description,
-        departement_academique: deptAcad !== '' ? Number(deptAcad) : null,
+        departement_academique: Number(deptAcad),
         filiere_parent: filiereParent !== '' ? Number(filiereParent) : null,
       },
     }, {
@@ -223,15 +227,19 @@ export default function FilierePage() {
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium text-iss-dark-soft">Département académique</label>
+            <label className="text-sm font-medium text-iss-dark-soft">
+              Département académique <span className="text-iss-secondary">*</span>
+            </label>
             <select value={deptAcad} onChange={e => setDeptAcad(e.target.value ? Number(e.target.value) : '')}
-              disabled={!canEdit}
+              disabled={!canEdit} required
               className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-iss-dark focus:outline-none focus:ring-2 focus:ring-iss-primary/30 focus:border-iss-primary transition-all bg-white disabled:bg-gray-50">
-              <option value="">— Aucun —</option>
+              {/* Obligatoire : une filière appartient toujours à un département. */}
+              <option value="" disabled>— Choisir le département —</option>
               {depts.map(d => (
                 <option key={d.id} value={d.id}>{d.code} — {d.intitule_fr}</option>
               ))}
             </select>
+            {errors.departement_academique && <p className="text-xs text-iss-secondary mt-1">{errors.departement_academique}</p>}
           </div>
 
           <div className="flex flex-col gap-1">

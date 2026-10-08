@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft, Save } from 'lucide-react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { filieresApi } from '@/lib/api/scolarite';
+import { departementsAcademiquesApi, filieresApi } from '@/lib/api/scolarite';
 import { useFilieresMutations } from '@/lib/api/scolarite-hooks';
 import { setFlash } from '@/lib/flash';
 import { useToast, ToastContainer } from '@/components/ui/Toast';
@@ -30,6 +30,9 @@ export default function AjouterFilierePage() {
   const [creditsTotal, setCreditsTotal] = useState(180);
   const [responsable, setResponsable] = useState('');
   const [filiereParent, setFiliereParent] = useState<number | ''>('');
+  // Obligatoire : sans lui, la filière disparaissait des listes filtrées par
+  // département (création d'un groupe). Le serveur l'exige aussi.
+  const [deptAcad, setDeptAcad] = useState<number | ''>('');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Charger les filières existantes pour le sélecteur de parente
@@ -37,6 +40,15 @@ export default function AjouterFilierePage() {
     queryKey: ['filieres', 'all'] as const,
     queryFn:  () => filieresApi.all(),
   });
+
+  const { data: depts = [] } = useQuery({
+    queryKey: ['departements-academiques', 'all'] as const,
+    queryFn:  () => departementsAcademiquesApi.all(),
+  });
+  // Un seul département : il est choisi d'office.
+  useEffect(() => {
+    if (deptAcad === '' && depts.length === 1) setDeptAcad(depts[0].id);
+  }, [depts, deptAcad]);
 
   const { create } = useFilieresMutations();
   const saving = create.isPending;
@@ -51,6 +63,10 @@ export default function AjouterFilierePage() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (deptAcad === '') {
+      setErrors({ departement_academique: 'Le département académique est obligatoire.' });
+      return;
+    }
     setErrors({});
     create.mutate({
       code, intitule_fr: intituleFr, intitule_ar: intituleAr,
@@ -59,6 +75,7 @@ export default function AjouterFilierePage() {
       niveau_debut: niveauDebut,
       niveau_fin:   niveauFin,
       credits_total: creditsTotal,
+      departement_academique: Number(deptAcad),
       responsable: responsable ? Number(responsable) : null,
       filiere_parent: filiereParent !== '' ? Number(filiereParent) : null,
       est_active: true,
@@ -109,6 +126,15 @@ export default function AjouterFilierePage() {
             <option value="Doctorat">Doctorat</option>
           </FormField>
         </div>
+
+        <FormField as="select" label="Département académique" value={deptAcad}
+          onChange={e => setDeptAcad(e.target.value ? Number(e.target.value) : '')}
+          required error={errors.departement_academique}>
+          <option value="" disabled>— Choisir le département —</option>
+          {depts.map(d => (
+            <option key={d.id} value={d.id}>{d.code} — {d.intitule_fr}</option>
+          ))}
+        </FormField>
 
         <BilingualInput
           labelFr="Intitulé FR" labelAr="المسمى"
