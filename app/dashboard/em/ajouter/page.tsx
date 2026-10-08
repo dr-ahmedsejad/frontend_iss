@@ -7,21 +7,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, BookOpen, Loader2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { setFlash } from '@/lib/flash';
-import { getStoredUser } from '@/lib/auth';
 
 const INPUT = "w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm bg-gray-50 focus:outline-none focus:bg-white focus:border-[#006633] transition-all";
 const NUM   = "w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm bg-gray-50 focus:outline-none focus:bg-white focus:border-[#006633] transition-all text-center";
 
-interface Departement { id: number; nom: string; filiere?: number | null; }
 interface Semestre    { id: number; semestre: string; code_semestre: string; }
-interface ModuleLMD   { id: number; code: string; intitule_fr: string; }
+interface ModuleLMD   { id: number; code: string; intitule_fr: string; filiere?: number | null; }
+interface Filiere     { id: number; code: string; intitule_fr: string; }
 
 export default function AjouterEMPage() {
   const router = useRouter();
 
-  // Contexte de session
-  const user            = getStoredUser();
-  const anneeSession = user?.annee_universitaire ?? '';
 
   const [code_em,      setCodeEm]      = useState('');
   const [intitule,     setIntitule]    = useState('');
@@ -32,22 +28,12 @@ export default function AjouterEMPage() {
   const [credits,      setCredits]     = useState('');
   const [coefficient,  setCoefficient] = useState('');
   const [has_tp,       setHasTp]       = useState(false);
-  const [departement,  setDepartement] = useState('');
   const [semestre,     setSemestre]    = useState('');
   const [module_lmd,   setModuleLmd]   = useState('');
+  const [filiere,      setFiliere]     = useState('');
   const [error,        setError]       = useState<string | null>(null);
 
   const qc = useQueryClient();
-
-  const depsQuery = useQuery({
-    queryKey: ['departements', 'all', anneeSession] as const,
-    queryFn:  () => apiFetch<Departement[]>(
-      anneeSession
-        ? `/api/v1/departements/all/?annee_universitaire=${encodeURIComponent(anneeSession)}`
-        : '/api/v1/departements/all/',
-    ).catch(() => [] as Departement[]),
-  });
-  const departements = depsQuery.data ?? [];
 
   const semsQuery = useQuery({
     queryKey: ['parametres', 'semestres', 'all'] as const,
@@ -61,12 +47,17 @@ export default function AjouterEMPage() {
   });
   const modulesLMD = modulesLMDQuery.data ?? [];
 
+  const filieresQuery = useQuery({
+    queryKey: ['scolarite', 'filieres', 'select', { est_active: true }] as const,
+    queryFn:  () => apiFetch<Filiere[]>('/api/v1/scolarite/filieres/select/?est_active=true').catch(() => [] as Filiere[]),
+  });
+  const filieres = filieresQuery.data ?? [];
+
   const createMut = useMutation({
     mutationFn: () => {
-      // Identité STABLE de l'EM : la filière (dérivée du groupe choisi). Le groupe
-      // (departement) reste envoyé pour le lien de planification initial, mais c'est
-      // `filiere` qui rend l'EM partagé par tous les groupes/années.
-      const dept = departements.find(d => String(d.id) === departement);
+      // Le groupe (departement) n'est plus demandé : il est vestigial côté
+      // serveur. L'identité de l'EM est sa filière, que le serveur déduit du
+      // module LMD choisi (EM.save).
       return apiFetch('/api/v1/ems/', {
         method: 'POST',
         body: {
@@ -76,8 +67,7 @@ export default function AjouterEMPage() {
           credits:     credits !== '' ? parseInt(credits) : null,
           coefficient: coefficient !== '' ? parseInt(coefficient) : null,
           has_tp,
-          filiere:     dept?.filiere ?? null,
-          departement: Number(departement),
+          filiere:     Number(filiere),
           semestre:    Number(semestre),
           module_lmd:  module_lmd ? Number(module_lmd) : null,
         },
@@ -95,7 +85,9 @@ export default function AjouterEMPage() {
   const handleSave = () => {
     if (!code_em.trim())  { setError('Le code EM est requis.');    return; }
     if (!intitule.trim()) { setError("L'intitulé est requis.");     return; }
-    if (!departement)     { setError('Le département est requis.'); return; }
+    // La filière identifie l'EM (un code par filière) : elle remplace le
+    // département, qui n'est plus demandé (vestigial côté serveur).
+    if (!filiere)         { setError('La filière est requise.');    return; }
     if (!semestre)        { setError('Le semestre est requis.');    return; }
     setError(null);
     createMut.mutate();
@@ -131,12 +123,17 @@ export default function AjouterEMPage() {
               placeholder="ex : Algorithmique" className={INPUT} />
           </div>
 
-          {/* Département filtré par année universitaire */}
           <div>
-            <label className="block text-xs font-semibold text-iss-dark mb-1.5">Département</label>
-            <select value={departement} onChange={e => setDepartement(e.target.value)} className={INPUT}>
+            <label className="block text-xs font-semibold text-iss-dark mb-1.5">Filière</label>
+            <select value={filiere} onChange={e => {
+              // Un module d'une autre filière n'a plus sa place : on le vide.
+              const v = e.target.value;
+              const m = modulesLMD.find(x => String(x.id) === module_lmd);
+              if (!(m && v && String(m.filiere ?? '') === v)) setModuleLmd('');
+              setFiliere(v);
+            }} className={INPUT}>
               <option value="">Sélectionner…</option>
-              {departements.map(d => <option key={d.id} value={d.id}>{d.nom}</option>)}
+              {filieres.map(f => <option key={f.id} value={f.id}>{f.code} — {f.intitule_fr}</option>)}
             </select>
           </div>
 
@@ -150,9 +147,14 @@ export default function AjouterEMPage() {
 
           <div className="col-span-2">
             <label className="block text-xs font-semibold text-iss-dark mb-1.5">Module associé</label>
-            <select value={module_lmd} onChange={e => setModuleLmd(e.target.value)} className={INPUT}>
+            <select value={module_lmd} onChange={e => {
+              setModuleLmd(e.target.value);
+              const m = modulesLMD.find(x => String(x.id) === e.target.value);
+              if (m?.filiere) setFiliere(String(m.filiere));
+            }} className={INPUT}>
               <option value="">— Aucun —</option>
-              {modulesLMD.map(m => (
+              {/* Seuls les modules de la filière choisie. */}
+              {modulesLMD.filter(m => !filiere || String(m.filiere ?? '') === filiere).map(m => (
                 <option key={m.id} value={m.id}>{m.code} — {m.intitule_fr}</option>
               ))}
             </select>

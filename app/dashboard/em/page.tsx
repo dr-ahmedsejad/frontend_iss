@@ -7,45 +7,29 @@ import { apiFetch } from '@/lib/api';
 import { Pagination } from '@/components/Pagination';
 import { ConfirmModal } from '@/components/ConfirmModal';
 import { popFlash } from '@/lib/flash';
-import { getStoredUser } from '@/lib/auth';
 import HistoryButton from '@/components/audit/HistoryButton';
 import { useEMList, useEMMutations } from '@/lib/api/em-hooks';
 import type { EM } from '@/lib/api/em';
 
 
-interface Departement { id: number; nom: string; }
 interface Semestre    { id: number; semestre: string; code_semestre: string; }
-interface ModuleLMD  { id: number; code: string; intitule_fr: string; }
+interface ModuleLMD  { id: number; code: string; intitule_fr: string; filiere?: number | null; }
 interface Filiere    { id: number; code: string; intitule_fr: string; }
 type EMForm = {
   code_em: string; intitule: string;
   CM: string; TD: string; TP: string; PR: string;
   credits: string; coefficient: string;
   has_tp: boolean;
-  departement: string; semestre: string;
+  filiere: string; semestre: string;
   module_lmd: string;
 };
-const EMPTY: EMForm = { code_em: '', intitule: '', CM: '0', TD: '0', TP: '0', PR: '0', credits: '', coefficient: '', has_tp: false, departement: '', semestre: '', module_lmd: '' };
+const EMPTY: EMForm = { code_em: '', intitule: '', CM: '0', TD: '0', TP: '0', PR: '0', credits: '', coefficient: '', has_tp: false, filiere: '', semestre: '', module_lmd: '' };
 const INPUT = "w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm bg-gray-50 focus:outline-none focus:bg-white focus:border-[#006633] transition-all";
 const NUM   = "w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm bg-gray-50 focus:outline-none focus:bg-white focus:border-[#006633] transition-all text-center";
 
 export default function EMPage() {
-  // Contexte de session
-  const user            = getStoredUser();
-  const anneeSession = user?.annee_universitaire ?? '';
-
   const [page,    setPage]    = useState(1);
   const [search,  setSearch]  = useState('');
-
-  const departementsQuery = useQuery({
-    queryKey: ['departements', 'all', anneeSession] as const,
-    queryFn:  () => apiFetch<Departement[]>(
-      anneeSession
-        ? `/api/v1/departements/all/?annee_universitaire=${encodeURIComponent(anneeSession)}`
-        : '/api/v1/departements/all/',
-    ).catch(() => [] as Departement[]),
-  });
-  const departements = departementsQuery.data ?? [];
 
   const semestresQuery = useQuery({
     queryKey: ['parametres', 'semestres', 'all'] as const,
@@ -116,7 +100,8 @@ export default function EMPage() {
       credits: item.credits != null ? String(item.credits) : '',
       coefficient: item.coefficient != null ? String(item.coefficient) : '',
       has_tp: item.has_tp,
-      departement: String(item.departement), semestre: String(item.semestre),
+      filiere: item.filiere_id ? String(item.filiere_id) : '',
+      semestre: String(item.semestre),
       module_lmd: item.module_lmd ? String(item.module_lmd) : '',
     });
     setFormError(null); setShowForm(true);
@@ -127,7 +112,9 @@ export default function EMPage() {
   const handleSave = () => {
     if (!form.code_em.trim())  { setFormError('Le code EM est requis.');    return; }
     if (!form.intitule.trim()) { setFormError("L'intitulé est requis.");     return; }
-    if (!form.departement)     { setFormError('Le département est requis.'); return; }
+    // La filière identifie l'EM (un code par filière) : elle remplace le
+    // département, qui n'est plus demandé (vestigial côté serveur).
+    if (!form.filiere)         { setFormError('La filière est requise.');    return; }
     if (!form.semestre)        { setFormError('Le semestre est requis.');    return; }
     setFormError(null);
 
@@ -141,7 +128,7 @@ export default function EMPage() {
       credits:     form.credits !== '' ? parseInt(form.credits) : null,
       coefficient: form.coefficient !== '' ? parseInt(form.coefficient) : null,
       has_tp:      form.has_tp,
-      departement: Number(form.departement),
+      filiere:     Number(form.filiere),
       semestre:    Number(form.semestre),
       module_lmd:  form.module_lmd ? Number(form.module_lmd) : null,
     };
@@ -230,10 +217,18 @@ export default function EMPage() {
                 placeholder="ex : Algorithmique" className={INPUT} />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-iss-dark mb-1.5">Département</label>
-              <select value={form.departement} onChange={e => set('departement', e.target.value)} className={INPUT}>
+              <label className="block text-xs font-semibold text-iss-dark mb-1.5">Filière</label>
+              <select value={form.filiere} onChange={e => {
+                // Un module d'une autre filière n'a plus sa place : on le vide.
+                const v = e.target.value;
+                setForm(f => {
+                  const m = modulesLMD.find(x => String(x.id) === f.module_lmd);
+                  const garde = m && v && String(m.filiere ?? '') === v;
+                  return { ...f, filiere: v, module_lmd: garde ? f.module_lmd : '' };
+                });
+              }} className={INPUT}>
                 <option value="">Sélectionner…</option>
-                {departements.map(d => <option key={d.id} value={d.id}>{d.nom}</option>)}
+                {filieres.map(f => <option key={f.id} value={f.id}>{f.code} — {f.intitule_fr}</option>)}
               </select>
             </div>
             <div>
@@ -245,9 +240,14 @@ export default function EMPage() {
             </div>
             <div className="col-span-2">
               <label className="block text-xs font-semibold text-iss-dark mb-1.5">Module associé</label>
-              <select value={form.module_lmd} onChange={e => set('module_lmd', e.target.value)} className={INPUT}>
+              <select value={form.module_lmd} onChange={e => {
+                const m = modulesLMD.find(x => String(x.id) === e.target.value);
+                setForm(f => ({ ...f, module_lmd: e.target.value,
+                                filiere: m?.filiere ? String(m.filiere) : f.filiere }));
+              }} className={INPUT}>
                 <option value="">— Aucun —</option>
-                {modulesLMD.map(m => (
+                {/* Seuls les modules de la filière choisie. */}
+                {modulesLMD.filter(m => !form.filiere || String(m.filiere ?? '') === form.filiere).map(m => (
                   <option key={m.id} value={m.id}>{m.code} — {m.intitule_fr}</option>
                 ))}
               </select>

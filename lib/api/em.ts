@@ -13,8 +13,10 @@ export interface EM {
   credits:             number | null;
   coefficient:         string | null;
   has_tp:              boolean;
-  departement:         number;
+  departement:         number | null;
   departement_nom:     string;
+  /** Identité de l'EM : filière directe, sinon celle du module LMD. */
+  filiere_id?:         number | null;
   semestre:            number;
   semestre_nom:        string;
   module_lmd:          number | null;
@@ -32,7 +34,9 @@ export interface EMInput {
   credits:     number | null;
   coefficient: number | null;
   has_tp:      boolean;
-  departement: number;
+  // Facultatif : le groupe d'un EM est vestigial (filière via le module LMD).
+  departement?: number | null;
+  filiere?:    number | null;
   semestre:    number;
   module_lmd:  number | null;
 }
