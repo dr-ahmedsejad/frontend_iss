@@ -19,6 +19,8 @@ export interface Groupe  {
   niveau?: number | null; niveau_nom?: string | null;
   filiere?: number | null; filiere_code?: string | null;
   annee_universitaire?: string;
+  /** Rang (1 ou 2) d'un groupe d'anglais, null pour un groupe habituel. */
+  groupe_anglais?: number | null;
 }
 export interface Semestre {
   id: number; semestre: string; code_semestre: string;

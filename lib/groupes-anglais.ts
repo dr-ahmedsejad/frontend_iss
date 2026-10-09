@@ -67,3 +67,28 @@ export function filtrer(etudiants: EtudiantNiveau[], choix: Choix, texte: string
     return true;
   });
 }
+
+// ── La planification (étape 2) ────────────────────────────────────────────────
+
+/** Une séance d'anglais se reconnaît à l'intitulé de son élément. */
+export function estIntituleAnglais(intitule: string | null | undefined): boolean {
+  return (intitule ?? '').normalize('NFKD').replace(/\p{M}/gu, '')
+    .trim().toLowerCase().startsWith('anglais');
+}
+
+export interface GroupePlanifie { niveau?: number | null; groupe_anglais?: number | null }
+
+/**
+ * Le catalogue d'éléments proposé pour un groupe :
+ *   - un groupe d'anglais ne reçoit que l'anglais ;
+ *   - un groupe habituel d'un niveau qui a ses groupes d'anglais ne reçoit
+ *     plus l'anglais (le serveur le refuserait) ;
+ *   - sinon, rien ne change.
+ */
+export function catalogueDuGroupe<T extends { intitule: string }>(
+  ems: T[], groupe: GroupePlanifie, groupes: GroupePlanifie[]): T[] {
+  if (groupe.groupe_anglais) return ems.filter(e => estIntituleAnglais(e.intitule));
+  const niveauEnGroupesDAnglais = groupe.niveau != null
+    && groupes.some(g => g.groupe_anglais && g.niveau === groupe.niveau);
+  return niveauEnGroupesDAnglais ? ems.filter(e => !estIntituleAnglais(e.intitule)) : ems;
+}

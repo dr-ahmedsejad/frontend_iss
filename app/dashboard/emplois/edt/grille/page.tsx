@@ -41,9 +41,10 @@ import { useCoherence } from '../_coherence';
 import { useSemainesCours, jjmmaa } from '../_semaines';
 import { FormulaireSeance, ModalePermutation } from '../_seance-modales';
 import { nommerLesGroupes } from '@/lib/nom-groupe';
+import { catalogueDuGroupe } from '@/lib/groupes-anglais';
 
 
-interface EM { id: number; code_em: string; intitule: string }
+interface EM { id: number; code_em: string; intitule: string; filiere_nom?: string | null }
 
 /** Ce qu'une case porte pendant la saisie, avant tout aller-retour serveur. */
 interface Cellule {
@@ -132,7 +133,10 @@ export default function GrilleTypePage() {
 
   // ── Référentiels ──────────────────────────────────────────────────────────
   const { jours, creneaux, salles, profs, typesSeance } = useReferentielsEDT();
-  const depts = useGroupesEDT(annee).data ?? [];
+  // Mémorisé : un `?? []` neuf à chaque rendu relançait tous les calculs qui
+  // dépendent de la liste des groupes.
+  const deptsCharges = useGroupesEDT(annee).data;
+  const depts = useMemo(() => deptsCharges ?? [], [deptsCharges]);
 
   // ── Les semaines, et ce qui y est réellement posé ─────────────────────────
   const { semaines: semainesCours } = useSemainesCours(annee, typeSem);
@@ -239,20 +243,27 @@ export default function GrilleTypePage() {
   // sans ce filtre la moitié des éléments proposés relèvent de l'autre
   // période. Un élément de S2 posé en S1 se planifie, se génère, puis
   // disparaît de tout écran filtré par semestre — qui a raison de l'écarter.
+  //
+  // Un groupe d'ANGLAIS n'a pas de filière mais un niveau : son catalogue est
+  // l'anglais de ce niveau, toutes filières (une fiche EM par filière). Et un
+  // groupe habituel d'un niveau qui a ses groupes d'anglais ne se voit plus
+  // proposer l'anglais — le serveur le refuserait (apps/edt/anglais.py).
   const groupe = depts.find(d => String(d.id) === deptId);
+  const parNiveau = !!groupe && (!!groupe.filiere || !!groupe.groupe_anglais) && !!groupe.niveau;
   const emsQuery = useQuery({
     queryKey: ['ref', 'ems', groupe?.filiere ?? 'sans-filiere',
-               groupe?.niveau ?? null, typeSem] as const,
+               parNiveau ? groupe?.niveau ?? null : null, typeSem] as const,
     enabled:  !!groupe,
     queryFn:  () => apiFetch<EM[]>(`/api/v1/ems/all/?${new URLSearchParams({
       semestre__type_semestre: typeSem,
       ...(groupe!.filiere ? { filiere: String(groupe!.filiere) } : {}),
-      ...(groupe!.filiere && groupe!.niveau
-          ? { semestre__niveau_semestre: String(groupe!.niveau) } : {}),
+      ...(parNiveau ? { semestre__niveau_semestre: String(groupe!.niveau) } : {}),
     })}`).catch(() => [] as EM[]),
     staleTime: 5 * 60_000,
   });
-  const ems = emsQuery.data ?? [];
+  const ems = useMemo(
+    () => (groupe ? catalogueDuGroupe(emsQuery.data ?? [], groupe, depts) : []),
+    [emsQuery.data, groupe, depts]);
 
   const optProfs  = useMemo(() => profs.map(p => ({ id: String(p.id), label: p.nom })), [profs]);
   const optSalles = useMemo(() => salles.map(s => ({ id: String(s.id), label: s.nom })), [salles]);
@@ -278,9 +289,12 @@ export default function GrilleTypePage() {
   // et le badge le dit une fois pour toutes.
   //
   // Ce qu'on peut CHOISIR : le catalogue, et rien d'autre.
+  // Les fiches d'anglais portent toutes l'intitulé « Anglais » : la filière
+  // les distingue, sur un groupe d'anglais.
   const optEms = useMemo(() => ems.map(e => ({
-    id: String(e.id), label: `${e.code_em} — ${e.intitule}`,
-  })), [ems]);
+    id: String(e.id),
+    label: `${e.code_em} — ${e.intitule}${groupe?.groupe_anglais && e.filiere_nom ? ` (${e.filiere_nom})` : ''}`,
+  })), [ems, groupe?.groupe_anglais]);
 
   /**
    * Ce qu'on peut LIRE — le catalogue, plus les éléments que la grille porte
@@ -972,7 +986,9 @@ export default function GrilleTypePage() {
             {/* Le catalogue est borné à la filière du groupe quand il en a
                 une, et à la seule période sinon. Le dire évite de chercher
                 dans le champ un élément que le filtre a écarté. */}
-            {groupe && !groupe.filiere && ems.length > 0 && (
+            {groupe?.groupe_anglais ? (
+              <Badge ton="bleu">Groupe d&apos;anglais — anglais du niveau seulement</Badge>
+            ) : groupe && !groupe.filiere && ems.length > 0 && (
               <Badge ton="bleu">Catalogue de la période</Badge>
             )}
             {ems.length === 0    && <Badge ton="rouge">Aucun élément disponible</Badge>}
