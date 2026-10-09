@@ -222,6 +222,9 @@ export const NAV_GROUPS: NavGroup[] = [
       // Dépôt groupé, chaque photo nommée par le matricule : le droit de
       // MODIFIER les étudiants, comme le serveur (apps/absence/photos.py).
       { href: '/dashboard/scolarite/etudiants/photos',   label: 'Photos des étudiants', action: 'modifier' },
+      // Deux groupes d'anglais par niveau ; l'étudiant y est affecté pour
+      // l'anglais seul et garde son groupe habituel (apps/edt/anglais.py).
+      { href: '/dashboard/scolarite/etudiants/anglais',  label: "Groupes d'anglais" },
       { href: '/dashboard/scolarite/etudiants/comptes',  label: 'Comptes portail' },
     ],
   },

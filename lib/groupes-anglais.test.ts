@@ -1,0 +1,29 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { changements, filtrer, groupeAffiche, type EtudiantNiveau } from './groupes-anglais.ts';
+
+const e = (id: number, matricule: string, groupe_anglais: number | null, groupe_habituel = 'G1'):
+  EtudiantNiveau => ({ id, matricule, nom: `Etudiant ${id}`, statut: 'actif',
+                       groupe_habituel, filiere: 'SEA', groupe_anglais });
+
+const liste = [e(1, '24601', null), e(2, '24602', 10), e(3, '24603', 11, 'G2')];
+
+test('seuls les choix qui changent quelque chose partent au serveur', () => {
+  assert.deepEqual(changements(liste, { 1: 10, 2: 10, 3: null }), [
+    { etudiant: 1, groupe: 10 },
+    { etudiant: 3, groupe: null },
+  ]);
+  assert.deepEqual(changements(liste, {}), []);
+});
+
+test('le choix en cours prime sur l’enregistré, même quand il retire', () => {
+  assert.equal(groupeAffiche(liste[1], { 2: null }), null);
+  assert.equal(groupeAffiche(liste[1], {}), 10);
+});
+
+test('recherche et filtres', () => {
+  assert.deepEqual(filtrer(liste, {}, '', 'sans').map(x => x.id), [1]);
+  assert.deepEqual(filtrer(liste, { 1: 11 }, '', 11).map(x => x.id), [1, 3]);
+  assert.deepEqual(filtrer(liste, {}, 'g2', 'tous').map(x => x.id), [3]);
+  assert.deepEqual(filtrer(liste, {}, '24602', 'tous').map(x => x.id), [2]);
+});
