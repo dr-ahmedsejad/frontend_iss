@@ -34,6 +34,13 @@ interface Semestre {
   code_semestre: string;
   type_semestre: string;
 }
+
+/** Les filières qui ont des EM dans l'année (apps/avancement/ems_annee.py). */
+interface FiliereAvancement {
+  id:       number;
+  code:     string;
+  intitule: string;
+}
 function pctStyle(pct: number, plan: number): React.CSSProperties {
   if (plan === 0) return { color: '#94a3b8', fontSize: '10px' };
   if (pct > 100)  return { background: 'rgba(200,32,32,0.13)', color: '#C82020', fontWeight: 700 };
@@ -51,6 +58,7 @@ export default function AvancementEMPage() {
   const ts    = user?.semestre === 'Pairs' ? 'P' : 'I';
 
   const [semestreId, setSemestreId] = useState('');
+  const [filiereId,  setFiliereId]  = useState('');
   const [searched,   setSearched]   = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
 
@@ -63,9 +71,21 @@ export default function AvancementEMPage() {
   });
   const semestres = semestresQuery.data ?? [];
 
+  // Servie par l'avancement lui-même : la liste du référentiel demande un
+  // droit (`scolarite`) que le lecteur de l'avancement n'a pas forcément.
+  const filieresQuery = useQuery({
+    queryKey: ['avancement', 'em', 'filieres', annee, ts] as const,
+    queryFn:  () => apiFetch<FiliereAvancement[]>(
+      `/api/v1/avancement/em/filieres/?${new URLSearchParams({ annee_universitaire: annee, type_semestre: ts })}`,
+    ).catch(() => [] as FiliereAvancement[]),
+    enabled:  !!annee,
+  });
+  const filieres = filieresQuery.data ?? [];
+
   function buildParams(): URLSearchParams {
     const p = new URLSearchParams({ annee_universitaire: annee, type_semestre: ts });
     if (semestreId) p.set('semestre_id', semestreId);
+    if (filiereId)  p.set('filiere', filiereId);
     return p;
   }
 
@@ -125,6 +145,7 @@ export default function AvancementEMPage() {
             <h1 className="text-xl font-bold text-iss-dark">Avancement EMs</h1>
             <p className="text-xs text-iss-gray">
               {annee} — Semestres {ts === 'P' ? 'pairs' : 'impairs'}
+              {filiereId && ` — ${filieres.find(f => String(f.id) === filiereId)?.code ?? ''}`}
             </p>
           </div>
         </div>
@@ -161,6 +182,16 @@ export default function AvancementEMPage() {
               <option value="">Tous ({ts === 'P' ? 'pairs' : 'impairs'})</option>
               {semestres.map(s => (
                 <option key={s.id} value={String(s.id)}>{s.semestre}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="filtre-filiere" className="block text-xs font-medium text-iss-gray mb-1">Filière</label>
+            <select id="filtre-filiere" value={filiereId} onChange={e => setFiliereId(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm bg-gray-50 focus:outline-none focus:border-[#006633] transition-all">
+              <option value="">Toutes les filières</option>
+              {filieres.map(f => (
+                <option key={f.id} value={String(f.id)}>{f.code} — {f.intitule}</option>
               ))}
             </select>
           </div>
